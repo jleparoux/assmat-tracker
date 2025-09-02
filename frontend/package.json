@@ -1,0 +1,46 @@
+{
+  "name": "assmat-tracker-frontend",
+  "version": "1.0.0",
+  "description": "Interface React pour AssmatTracker",
+  "private": true,
+  "homepage": ".",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "^5.0.1",
+    "lucide-react": "^0.294.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build", 
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "audit": "npm audit",
+    "audit-fix": "npm audit fix",
+    "security-check": "npm audit --audit-level moderate"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "proxy": "http://localhost:3001",
+  "overrides": {
+    "react-scripts": {
+      "typescript": "^4.9.5"
+    }
+  }
+}
