@@ -46,6 +46,55 @@ code {
   animation: spin 1s linear infinite;
 }
 
+/* Prévention de la sélection de texte - Multi-navigateurs */
+.no-select,
+.user-select-none {
+  -webkit-user-select: none !important;  /* Safari/Chrome */
+  -moz-user-select: none !important;     /* Firefox */
+  -ms-user-select: none !important;      /* IE/Edge */
+  user-select: none !important;          /* Standard */
+  
+  /* Prévention du drag & drop */
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  
+  /* Empêcher la sélection sur les éléments de texte */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+}
+
+/* Classe spécifique pour le calendrier */
+.calendar-cell {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  
+  /* Empêcher le highlight sur touch devices */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  
+  /* Empêcher le focus outline sur les divs cliquables */
+  outline: none;
+}
+
+/* Fix pour empêcher la sélection lors du Shift+Click */
+.calendar-cell * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  pointer-events: none; /* Les éléments enfants ne peuvent pas être sélectionnés */
+}
+
+/* Restaurer les événements pointer pour les éléments interactifs */
+.calendar-cell.interactive {
+  pointer-events: auto;
+}
+
 /* Scrollbar personnalisée */
 ::-webkit-scrollbar {
   width: 8px;
@@ -63,4 +112,33 @@ code {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #a1a1a1;
+}
+
+/* Empêcher la sélection globale lors des interactions Shift */
+.prevent-selection * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+/* Styles pour les tooltips améliorés */
+.calendar-tooltip {
+  position: relative;
+}
+
+.calendar-tooltip:hover::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
 }

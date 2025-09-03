@@ -10,10 +10,14 @@ const AssistantMaternelTracker = () => {
   const [dailyData, setDailyData] = useState({});
   const [showSettings, setShowSettings] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedDays, setSelectedDays] = useState([]); // Sélection multiple
   const [showDayModal, setShowDayModal] = useState(false);
   const [showAnnualView, setShowAnnualView] = useState(false);
   const [loading, setLoading] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateSource, setDuplicateSource] = useState(null);
 
   // Paramètres configurables
   const [settings, setSettings] = useState({
@@ -112,6 +116,39 @@ const AssistantMaternelTracker = () => {
     }
   }, [dailyData, currentDate, autoSave]);
 
+  // Nettoyer la sélection lors du changement de mois
+  useEffect(() => {
+    clearSelection();
+  }, [currentDate]);
+
+  // Empêcher la sélection globale sur Shift+Click
+  useEffect(() => {
+    const handleGlobalMouseDown = (e) => {
+      if (e.shiftKey) {
+        // Empêcher la sélection globale lors du Shift+Click
+        e.preventDefault();
+        if (window.getSelection) {
+          window.getSelection().removeAllRanges();
+        }
+      }
+    };
+
+    const handleGlobalSelectStart = (e) => {
+      if (e.target.closest('.calendar-cell')) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    document.addEventListener('mousedown', handleGlobalMouseDown, true);
+    document.addEventListener('selectstart', handleGlobalSelectStart, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalMouseDown, true);
+      document.removeEventListener('selectstart', handleGlobalSelectStart, true);
+    };
+  }, []);
+
   // Utilitaires dates
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -148,6 +185,27 @@ const AssistantMaternelTracker = () => {
   const isWeekend = (date) => {
     const day = date.getDay();
     return day === 0 || day === 6;
+  };
+
+  // Utilitaires pour la sélection multiple
+  const toggleDaySelection = (date) => {
+    const dateKey = formatDate(date);
+    setSelectedDays(prev => {
+      if (prev.includes(dateKey)) {
+        return prev.filter(d => d !== dateKey);
+      } else {
+        return [...prev, dateKey];
+      }
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedDays([]);
+    setMultiSelectMode(false);
+  };
+
+  const isDateSelected = (date) => {
+    return selectedDays.includes(formatDate(date));
   };
 
   // Calcul des heures pour un jour
@@ -207,10 +265,12 @@ const AssistantMaternelTracker = () => {
       
       if (dayData.status === 'conge-assmat') {
         joursCongesAssmat++;
+        joursPresence++; // Les congés AM comptent pour les frais
         const avgHours = 8;
         totalSalary += avgHours * settings.tarifHoraire;
       } else if (dayData.status === 'conge-parent') {
         joursCongesParent++;
+        joursPresence++; // Les congés parents comptent aussi pour les frais
         const avgHours = 8;
         totalSalary += avgHours * settings.tarifHoraire;
       } else if (dayData.depot && dayData.reprise) {
@@ -223,7 +283,7 @@ const AssistantMaternelTracker = () => {
     }
     
     // Frais mensuels calculés sur les jours de présence réels du mois
-    const fraisMensuels = (settings.fraisRepas + settings.fraisEntretien) * joursTravailles;
+    const fraisMensuels = (settings.fraisRepas + settings.fraisEntretien) * joursPresence;
     totalSalary += fraisMensuels;
     
     return {
@@ -259,10 +319,12 @@ const AssistantMaternelTracker = () => {
       
       if (dayData.status === 'conge-assmat') {
         joursCongesAssmat++;
+        joursPresence++;
         const avgHours = 8;
         totalSalary += avgHours * settings.tarifHoraire;
       } else if (dayData.status === 'conge-parent') {
         joursCongesParent++;
+        joursPresence++;
         const avgHours = 8;
         totalSalary += avgHours * settings.tarifHoraire;
       } else if (dayData.depot && dayData.reprise) {
@@ -274,7 +336,7 @@ const AssistantMaternelTracker = () => {
       }
     }
     
-    const fraisMensuels = (settings.fraisRepas + settings.fraisEntretien) * joursTravailles;
+    const fraisMensuels = (settings.fraisRepas + settings.fraisEntretien) * joursPresence;
     totalSalary += fraisMensuels;
     
     return {
@@ -368,7 +430,7 @@ const AssistantMaternelTracker = () => {
     };
   };
 
-  // Composant Modal jour
+  // Composant Modal jour (modifié pour multi-sélection)
   const DayModal = () => {
     const [formData, setFormData] = useState({
       depot: '',
@@ -377,8 +439,12 @@ const AssistantMaternelTracker = () => {
       notes: ''
     });
 
+    const isMultiDay = selectedDays.length > 1 || (selectedDays.length === 1 && !selectedDay);
+    const targetDays = isMultiDay ? selectedDays.map(dayKey => new Date(dayKey + 'T12:00:00')) : [selectedDay];
+
     useEffect(() => {
-      if (selectedDay) {
+      if (selectedDay && !isMultiDay) {
+        // Sélection simple - charger les données existantes
         const dayKey = formatDate(selectedDay);
         const existingData = dailyData[dayKey] || {};
         setFormData({
@@ -387,33 +453,73 @@ const AssistantMaternelTracker = () => {
           status: existingData.status || 'normal',
           notes: existingData.notes || ''
         });
+      } else {
+        // Multi-sélection - formulaire vide
+        setFormData({
+          depot: '',
+          reprise: '',
+          status: 'normal',
+          notes: ''
+        });
       }
-    }, [selectedDay]);
+    }, [selectedDay, selectedDays, isMultiDay]);
 
     const handleSave = () => {
-      const dayKey = formatDate(selectedDay);
-      setDailyData(prev => ({
-        ...prev,
-        [dayKey]: formData
-      }));
+      if (isMultiDay) {
+        // Sauvegarder pour tous les jours sélectionnés
+        const updates = {};
+        selectedDays.forEach(dayKey => {
+          updates[dayKey] = { ...formData };
+        });
+        setDailyData(prev => ({ ...prev, ...updates }));
+        clearSelection();
+      } else {
+        // Sauvegarder pour un seul jour
+        const dayKey = formatDate(selectedDay);
+        setDailyData(prev => ({
+          ...prev,
+          [dayKey]: formData
+        }));
+      }
       setShowDayModal(false);
     };
 
-    if (!showDayModal || !selectedDay) return null;
+    if (!showDayModal) return null;
 
     const hours = formData.depot && formData.reprise ? calculateDayHours(formData) : null;
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
+        <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4 max-h-96 overflow-y-auto">
           <h3 className="text-lg font-semibold mb-4">
-            {selectedDay.toLocaleDateString('fr-FR', { 
-              weekday: 'long', 
-              day: 'numeric', 
-              month: 'long', 
-              year: 'numeric' 
-            })}
+            {isMultiDay ? (
+              <span>
+                📅 Saisie multiple - {selectedDays.length} jour{selectedDays.length > 1 ? 's' : ''} sélectionné{selectedDays.length > 1 ? 's' : ''}
+              </span>
+            ) : (
+              selectedDay.toLocaleDateString('fr-FR', { 
+                weekday: 'long', 
+                day: 'numeric', 
+                month: 'long', 
+                year: 'numeric' 
+              })
+            )}
           </h3>
+
+          {isMultiDay && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-md">
+              <p className="text-sm text-blue-700">
+                <strong>Jours sélectionnés :</strong>
+              </p>
+              <div className="mt-1 text-xs text-blue-600">
+                {selectedDays.slice(0, 5).map(dayKey => {
+                  const date = new Date(dayKey + 'T12:00:00');
+                  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+                }).join(', ')}
+                {selectedDays.length > 5 && ` et ${selectedDays.length - 5} autre${selectedDays.length - 5 > 1 ? 's' : ''}...`}
+              </div>
+            </div>
+          )}
           
           <div className="space-y-4">
             <div>
@@ -452,7 +558,7 @@ const AssistantMaternelTracker = () => {
                   </div>
                 </div>
 
-                {hours && (
+                {hours && !isMultiDay && (
                   <div className="bg-gray-50 p-3 rounded-md">
                     <p className="text-sm"><strong>Total:</strong> {hours.total.toFixed(2)}h</p>
                     <p className="text-sm"><strong>Normales:</strong> {hours.normales.toFixed(2)}h</p>
@@ -471,6 +577,7 @@ const AssistantMaternelTracker = () => {
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                 className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
                 rows="2"
+                placeholder={isMultiDay ? "Notes qui seront appliquées à tous les jours sélectionnés" : ""}
               />
             </div>
           </div>
@@ -480,10 +587,13 @@ const AssistantMaternelTracker = () => {
               onClick={handleSave}
               className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
             >
-              Enregistrer
+              {isMultiDay ? `Enregistrer (${selectedDays.length} jours)` : 'Enregistrer'}
             </button>
             <button
-              onClick={() => setShowDayModal(false)}
+              onClick={() => {
+                setShowDayModal(false);
+                if (isMultiDay) clearSelection();
+              }}
               className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
             >
               Annuler
@@ -796,6 +906,146 @@ const AssistantMaternelTracker = () => {
     );
   };
 
+  // Composant Modal de duplication
+  const DuplicateModal = () => {
+    const [targetDays, setTargetDays] = useState([]);
+
+    if (!showDuplicateModal || !duplicateSource) return null;
+
+    const sourceDate = new Date(duplicateSource + 'T12:00:00');
+    const sourceData = dailyData[duplicateSource];
+
+    const handleDayToggle = (dayKey) => {
+      setTargetDays(prev => {
+        if (prev.includes(dayKey)) {
+          return prev.filter(d => d !== dayKey);
+        } else {
+          return [...prev, dayKey];
+        }
+      });
+    };
+
+    const handleDuplicate = () => {
+      if (targetDays.length === 0) return;
+
+      const updates = {};
+      targetDays.forEach(dayKey => {
+        updates[dayKey] = { ...sourceData };
+      });
+      
+      setDailyData(prev => ({ ...prev, ...updates }));
+      setShowDuplicateModal(false);
+      setDuplicateSource(null);
+      setTargetDays([]);
+    };
+
+    // Générer les jours du mois courant pour sélection
+    const { daysInMonth, year, month } = getDaysInMonth(currentDate);
+    const availableDays = [];
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      if (!isWeekend(date)) {
+        const dayKey = formatDate(date);
+        if (dayKey !== duplicateSource) { // Exclure le jour source
+          availableDays.push({ date, dayKey });
+        }
+      }
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4 max-h-96 overflow-y-auto">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            📋 Dupliquer les données
+          </h3>
+
+          <div className="mb-4 p-3 bg-blue-50 rounded-md">
+            <p className="text-sm font-medium text-blue-900">Jour source :</p>
+            <p className="text-sm text-blue-700">
+              {sourceDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+            <div className="mt-2 text-xs text-blue-600">
+              {sourceData?.status === 'normal' && sourceData?.depot && sourceData?.reprise && (
+                <span>{formatTimeRangeFrench(sourceData.depot, sourceData.reprise)}</span>
+              )}
+              {sourceData?.status === 'conge-assmat' && <span>Congé assistant maternel</span>}
+              {sourceData?.status === 'conge-parent' && <span>Congé parent</span>}
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <p className="text-sm font-medium mb-2">Sélectionnez les jours de destination :</p>
+            <div className="max-h-40 overflow-y-auto border rounded-md">
+              {availableDays.map(({ date, dayKey }) => {
+                const isSelected = targetDays.includes(dayKey);
+                const hasExistingData = dailyData[dayKey] && 
+                  (dailyData[dayKey].depot || dailyData[dayKey].status !== 'normal');
+                
+                return (
+                  <div
+                    key={dayKey}
+                    onClick={() => handleDayToggle(dayKey)}
+                    className={`p-2 border-b cursor-pointer hover:bg-gray-50 flex justify-between items-center ${
+                      isSelected ? 'bg-blue-100' : ''
+                    }`}
+                  >
+                    <span className="text-sm">
+                      {date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {hasExistingData && (
+                        <span className="text-xs text-orange-600 bg-orange-100 px-1 rounded">
+                          Données
+                        </span>
+                      )}
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleDayToggle(dayKey)}
+                        className="rounded"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {targetDays.length > 0 && (
+            <div className="mb-4 p-2 bg-yellow-50 rounded-md">
+              <p className="text-xs text-yellow-700">
+                ⚠️ {targetDays.filter(dayKey => 
+                  dailyData[dayKey] && (dailyData[dayKey].depot || dailyData[dayKey].status !== 'normal')
+                ).length} jour(s) avec données existantes seront remplacés.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleDuplicate}
+              disabled={targetDays.length === 0}
+              className="flex-1 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Dupliquer sur {targetDays.length} jour{targetDays.length > 1 ? 's' : ''}
+            </button>
+            <button
+              onClick={() => {
+                setShowDuplicateModal(false);
+                setDuplicateSource(null);
+                setTargetDays([]);
+              }}
+              className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Export/Import et Sauvegarde manuelle
   const exportData = async () => {
     try {
@@ -880,10 +1130,12 @@ const AssistantMaternelTracker = () => {
       const dayKey = formatDate(date);
       const dayData = dailyData[dayKey] || {};
       const isWeekendDay = isWeekend(date);
+      const isSelected = isDateSelected(date);
       
       let bgColor = 'bg-white hover:bg-gray-50';
       let textColor = 'text-gray-900';
       let statusText = '';
+      let borderStyle = 'border-gray-200';
       
       if (isWeekendDay) {
         bgColor = 'bg-gray-100';
@@ -899,12 +1151,48 @@ const AssistantMaternelTracker = () => {
         const hours = calculateDayHours(dayData);
         statusText = `${hours.total.toFixed(1)}h`;
       }
+
+      // Style pour sélection multiple
+      if (isSelected) {
+        borderStyle = 'border-blue-500 border-2';
+        bgColor = bgColor.replace('hover:bg-', 'bg-').replace('100', '200');
+      }
+
+      const handleDayClick = (event) => {
+        if (isWeekendDay) return;
+
+        if (multiSelectMode) {
+          // Mode sélection multiple
+          toggleDaySelection(date);
+        } else if (event.ctrlKey || event.metaKey) {
+          // Ctrl/Cmd + clic = démarrer sélection multiple
+          setMultiSelectMode(true);
+          toggleDaySelection(date);
+        } else if (event.shiftKey && dayData.depot && dayData.reprise) {
+          // Shift + clic = dupliquer ce jour
+          setDuplicateSource(dayKey);
+          setShowDuplicateModal(true);
+        } else {
+          // Clic normal = ouvrir modal
+          setSelectedDay(date);
+          setShowDayModal(true);
+        }
+      };
       
       days.push(
         <div
           key={day}
-          onClick={() => !isWeekendDay && (setSelectedDay(date), setShowDayModal(true))}
-          className={`h-24 border border-gray-200 p-2 cursor-pointer ${bgColor} ${textColor} ${isWeekendDay ? 'cursor-not-allowed' : ''}`}
+          onClick={handleDayClick}
+          className={`h-24 border ${borderStyle} p-2 cursor-pointer ${bgColor} ${textColor} ${
+            isWeekendDay ? 'cursor-not-allowed' : ''
+          } relative transition-all duration-200`}
+          title={
+            isWeekendDay 
+              ? 'Week-end'
+              : multiSelectMode 
+                ? 'Cliquez pour sélectionner/désélectionner'
+                : 'Clic = Modifier • Ctrl+Clic = Sélection multiple • Shift+Clic = Dupliquer'
+          }
         >
           <div className="font-semibold">{day}</div>
           <div className="text-xs mt-1">
@@ -913,6 +1201,18 @@ const AssistantMaternelTracker = () => {
           <div className="text-xs text-center mt-1 font-medium">
             {statusText}
           </div>
+          
+          {/* Indicateur de sélection */}
+          {isSelected && (
+            <div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+          )}
+
+          {/* Indicateur de duplication possible */}
+          {dayData.depot && dayData.reprise && !isSelected && !multiSelectMode && (
+            <div className="absolute bottom-1 right-1 text-xs text-gray-400">
+              📋
+            </div>
+          )}
         </div>
       );
     }
@@ -944,6 +1244,24 @@ const AssistantMaternelTracker = () => {
               >
                 <BarChart3 className="h-4 w-4" />
                 Récap Annuel
+              </button>
+
+              <button
+                onClick={() => {
+                  if (multiSelectMode) {
+                    clearSelection();
+                  } else {
+                    setMultiSelectMode(true);
+                  }
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                  multiSelectMode 
+                    ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                }`}
+              >
+                {multiSelectMode ? '✕' : '☑️'}
+                {multiSelectMode ? 'Quitter sélection' : 'Sélection multiple'}
               </button>
 
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-md">
@@ -1029,6 +1347,43 @@ const AssistantMaternelTracker = () => {
                 </button>
               </div>
 
+              {/* Barre d'outils de sélection */}
+              {(multiSelectMode || selectedDays.length > 0) && (
+                <div className="px-4 py-2 bg-blue-50 border-b flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-blue-900">
+                      {selectedDays.length} jour{selectedDays.length > 1 ? 's' : ''} sélectionné{selectedDays.length > 1 ? 's' : ''}
+                    </span>
+                    {selectedDays.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setShowDayModal(true);
+                          setSelectedDay(null); // Force multi-day mode
+                        }}
+                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                      >
+                        📝 Saisir les heures
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={clearSelection}
+                    className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                  >
+                    ✕ Annuler
+                  </button>
+                </div>
+              )}
+
+              {/* Instructions d'utilisation */}
+              {!multiSelectMode && selectedDays.length === 0 && (
+                <div className="px-4 py-2 bg-gray-50 border-b">
+                  <div className="text-xs text-gray-600 text-center">
+                    💡 <strong>Clic</strong> = modifier • <strong>Cmd+Clic</strong> = sélection multiple • <strong>Shift+Clic</strong> = dupliquer
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-7 bg-gray-50">
                 {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
                   <div key={day} className="p-3 text-center font-medium text-gray-700 border-r border-gray-200 last:border-r-0">
@@ -1107,23 +1462,52 @@ const AssistantMaternelTracker = () => {
             </div>
 
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="text-lg font-semibold mb-4">Légende</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-green-100 rounded"></div>
-                  <span>Jour travaillé</span>
+              <h3 className="text-lg font-semibold mb-4">Guide d'utilisation</h3>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <p className="font-medium text-gray-900 mb-1">Actions sur les jours :</p>
+                  <div className="ml-2 space-y-1 text-gray-600">
+                    <p>• <strong>Clic simple</strong> : Modifier/saisir les heures</p>
+                    <p>• <strong>Ctrl + Clic</strong> : Démarrer la sélection multiple</p>
+                    <p>• <strong>Shift + Clic</strong> : Dupliquer ce jour vers d'autres</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-orange-100 rounded"></div>
-                  <span>Congé assistant maternel</span>
+                
+                <div>
+                  <p className="font-medium text-gray-900 mb-1">Code couleurs :</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-green-100 rounded border"></div>
+                      <span>Jour travaillé (avec heures)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-orange-100 rounded border"></div>
+                      <span>Congé assistant maternel</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-blue-100 rounded border"></div>
+                      <span>Congé parent</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-gray-100 rounded border"></div>
+                      <span>Week-end</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-blue-200 rounded border-2 border-blue-500 relative">
+                        <div className="absolute top-0 right-0 w-1 h-1 bg-blue-500 rounded-full"></div>
+                      </div>
+                      <span>Jour sélectionné</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-blue-100 rounded"></div>
-                  <span>Congé parent</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gray-100 rounded"></div>
-                  <span>Week-end</span>
+
+                <div>
+                  <p className="font-medium text-gray-900 mb-1">Fonctionnalités :</p>
+                  <div className="ml-2 space-y-1 text-gray-600">
+                    <p>• <span className="bg-purple-100 px-2 py-1 rounded text-xs">☑️ Sélection multiple</span> : Saisir plusieurs jours ensemble</p>
+                    <p>• <span className="text-xs">📋</span> : Icône de duplication disponible</p>
+                    <p>• Auto-sauvegarde après chaque modification</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1133,6 +1517,7 @@ const AssistantMaternelTracker = () => {
         <DayModal />
         <SettingsPanel />
         <AnnualView />
+        <DuplicateModal />
       </div>
     </div>
   );
