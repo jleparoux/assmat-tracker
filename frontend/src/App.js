@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Settings, Download, Upload, BarChart3, Save, RefreshCw } from 'lucide-react';
+import { Calendar, Settings, Download, Upload, BarChart3, Save, RefreshCw, ChevronDown } from 'lucide-react';
 
 const AssistantMaternelTracker = () => {
   // États principaux
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1); // Premier jour du mois actuel
+    return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [dailyData, setDailyData] = useState({});
   const [showSettings, setShowSettings] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [selectedDays, setSelectedDays] = useState([]); // Sélection multiple
+  const [selectedDays, setSelectedDays] = useState([]);
   const [showDayModal, setShowDayModal] = useState(false);
   const [showAnnualView, setShowAnnualView] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,6 +18,10 @@ const AssistantMaternelTracker = () => {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateSource, setDuplicateSource] = useState(null);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [annualStats, setAnnualStats] = useState(null);
+  const [loadingAnnual, setLoadingAnnual] = useState(false);
 
   // Paramètres configurables
   const [settings, setSettings] = useState({
@@ -29,27 +33,12 @@ const AssistantMaternelTracker = () => {
     joursMenualises: 22
   });
 
-  // API Functions - Détection automatique de l'environnement
-  const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+  // Détection de l'OS pour afficher le bon raccourci
+  const isMacOS = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const modifierKey = isMacOS ? 'Cmd' : 'Ctrl';
 
-  const loadMonthData = async (date) => {
-    setLoading(true);
-    try {
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const response = await fetch(`${API_BASE}/api/data/${monthKey}`);
-      const data = await response.json();
-      
-      if (data.dailyData) {
-        setDailyData(data.dailyData);
-      }
-      return data;
-    } catch (error) {
-      console.error('Erreur chargement données:', error);
-      return { dailyData: {} };
-    } finally {
-      setLoading(false);
-    }
-  };
+  // API Functions
+  const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
   const saveMonthData = async (date, data) => {
     try {
@@ -63,18 +52,28 @@ const AssistantMaternelTracker = () => {
       if (!response.ok) throw new Error('Erreur sauvegarde');
       return true;
     } catch (error) {
-      console.error('Erreur sauvegarde données:', error);
+      console.error('Erreur sauvegarde:', error);
       return false;
     }
   };
 
-  const loadSettings = async () => {
+  const loadMonthData = async (date) => {
+    setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/settings`);
-      const data = await response.json();
-      setSettings(data);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const response = await fetch(`${API_BASE}/api/data/${monthKey}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDailyData(data.dailyData || {});
+      } else {
+        setDailyData({});
+      }
     } catch (error) {
-      console.error('Erreur chargement paramètres:', error);
+      console.error('Erreur chargement:', error);
+      setDailyData({});
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -94,62 +93,95 @@ const AssistantMaternelTracker = () => {
     }
   };
 
-  // Chargement initial
-  useEffect(() => {
-    loadSettings();
-    loadMonthData(currentDate);
-  }, []);
-
-  // Rechargement lors du changement de mois
-  useEffect(() => {
-    loadMonthData(currentDate);
-  }, [currentDate]);
-
-  // Auto-save lors des modifications
-  useEffect(() => {
-    if (autoSave && Object.keys(dailyData).length > 0) {
-      const timeoutId = setTimeout(() => {
-        saveMonthData(currentDate, dailyData);
-      }, 1000);
-      
-      return () => clearTimeout(timeoutId);
+  const loadSettings = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/settings`);
+      if (response.ok) {
+        const data = await response.json();
+        setSettings(data);
+      }
+    } catch (error) {
+      console.error('Erreur chargement paramètres:', error);
     }
-  }, [dailyData, currentDate, autoSave]);
+  };
 
-  // Nettoyer la sélection lors du changement de mois
-  useEffect(() => {
-    clearSelection();
-  }, [currentDate]);
-
-  // Empêcher la sélection globale sur Shift+Click
-  useEffect(() => {
-    const handleGlobalMouseDown = (e) => {
-      if (e.shiftKey) {
-        // Empêcher la sélection globale lors du Shift+Click
-        e.preventDefault();
-        if (window.getSelection) {
-          window.getSelection().removeAllRanges();
+  const loadAnnualData = async (year) => {
+    setLoadingAnnual(true);
+    try {
+      const months = [];
+      for (let month = 1; month <= 12; month++) {
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        try {
+          const response = await fetch(`${API_BASE}/api/data/${monthKey}`);
+          if (response.ok) {
+            const data = await response.json();
+            months.push({ month, data: data.dailyData || {} });
+          } else {
+            months.push({ month, data: {} });
+          }
+        } catch (error) {
+          months.push({ month, data: {} });
         }
       }
-    };
+      
+      // Calculer les statistiques annuelles
+      const stats = calculateAnnualStats(months, year);
+      setAnnualStats(stats);
+    } catch (error) {
+      console.error('Erreur chargement données annuelles:', error);
+    } finally {
+      setLoadingAnnual(false);
+    }
+  };
 
-    const handleGlobalSelectStart = (e) => {
-      if (e.target.closest('.calendar-cell')) {
+  // Effects
+  useEffect(() => {
+    loadMonthData(currentDate);
+    loadSettings();
+  }, []);
+
+  useEffect(() => {
+    if (autoSave) {
+      const timer = setTimeout(() => {
+        saveMonthData(currentDate, dailyData);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [dailyData, autoSave, currentDate]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        clearSelection();
+        setShowActionsMenu(false);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        return false;
+        manualSave();
       }
     };
 
-    document.addEventListener('mousedown', handleGlobalMouseDown, true);
-    document.addEventListener('selectstart', handleGlobalSelectStart, true);
-
-    return () => {
-      document.removeEventListener('mousedown', handleGlobalMouseDown, true);
-      document.removeEventListener('selectstart', handleGlobalSelectStart, true);
-    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Utilitaires dates
+  useEffect(() => {
+    loadMonthData(currentDate);
+  }, [currentDate]);
+
+  useEffect(() => {
+    if (showAnnualView) {
+      loadAnnualData(selectedYear);
+    }
+  }, [showAnnualView, selectedYear]);
+
+  useEffect(() => {
+    if (showAnnualView) {
+      setSelectedYear(currentDate.getFullYear());
+    }
+  }, [showAnnualView]);
+
+  // Utilitaires
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -167,19 +199,12 @@ const AssistantMaternelTracker = () => {
 
   const formatTimeFrench = (time) => {
     if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const h = parseInt(hours, 10);
-    const m = parseInt(minutes, 10);
-    
-    if (m === 0) {
-      return `${h}h`;
-    }
-    return `${h}h${String(m).padStart(2, '0')}`;
+    return time.replace(':', 'h');
   };
 
-  const formatTimeRangeFrench = (depot, reprise) => {
-    if (!depot || !reprise) return '';
-    return `${formatTimeFrench(depot)}-${formatTimeFrench(reprise)}`;
+  const formatTimeRangeFrench = (start, end) => {
+    if (!start || !end) return '';
+    return `${formatTimeFrench(start)} - ${formatTimeFrench(end)}`;
   };
 
   const isWeekend = (date) => {
@@ -187,12 +212,17 @@ const AssistantMaternelTracker = () => {
     return day === 0 || day === 6;
   };
 
-  // Utilitaires pour la sélection multiple
+  // Gestion sélection
+  const isDateSelected = (date) => {
+    const dateKey = formatDate(date);
+    return selectedDays.includes(dateKey);
+  };
+
   const toggleDaySelection = (date) => {
     const dateKey = formatDate(date);
     setSelectedDays(prev => {
       if (prev.includes(dateKey)) {
-        return prev.filter(d => d !== dateKey);
+        return prev.filter(key => key !== dateKey);
       } else {
         return [...prev, dateKey];
       }
@@ -202,929 +232,250 @@ const AssistantMaternelTracker = () => {
   const clearSelection = () => {
     setSelectedDays([]);
     setMultiSelectMode(false);
+    setSelectedDay(null);
   };
 
-  const isDateSelected = (date) => {
-    return selectedDays.includes(formatDate(date));
-  };
-
-  // Calcul des heures pour un jour
+  // Calculs
   const calculateDayHours = (dayData) => {
-    if (!dayData.depot || !dayData.reprise) return { total: 0, normales: 0, majorees: 0 };
+    if (!dayData.depot || !dayData.reprise) return { normal: 0, majore: 0, total: 0 };
     
-    const [depotH, depotM] = dayData.depot.split(':').map(Number);
-    const [repriseH, repriseM] = dayData.reprise.split(':').map(Number);
+    const [startH, startM] = dayData.depot.split(':').map(Number);
+    const [endH, endM] = dayData.reprise.split(':').map(Number);
     
-    const depotMinutes = depotH * 60 + depotM;
-    const repriseMinutes = repriseH * 60 + repriseM;
-    const totalMinutes = repriseMinutes - depotMinutes;
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const totalMinutes = endMinutes - startMinutes;
     const totalHours = totalMinutes / 60;
     
     if (totalHours <= settings.seuilMajoration) {
-      return { total: totalHours, normales: totalHours, majorees: 0 };
+      return { normal: totalHours, majore: 0, total: totalHours };
     } else {
-      return { 
-        total: totalHours, 
-        normales: settings.seuilMajoration, 
-        majorees: totalHours - settings.seuilMajoration 
-      };
+      const normalHours = settings.seuilMajoration;
+      const majoredHours = totalHours - settings.seuilMajoration;
+      return { normal: normalHours, majore: majoredHours, total: totalHours };
     }
   };
 
-  // Calcul du salaire d'un jour
-  const calculateDaySalary = (dayData, date) => {
-    if (dayData.status === 'conge-parent' || dayData.status === 'conge-assmat') {
-      const avgHours = getMonthlyStats().moyenneHeuresJour || 8;
-      return avgHours * settings.tarifHoraire;
-    }
-    
-    if (!dayData.depot || !dayData.reprise) return 0;
-    
-    const hours = calculateDayHours(dayData);
-    return (hours.normales * settings.tarifHoraire) + 
-           (hours.majorees * settings.tarifHoraire * settings.tarifMajoration);
+  const calculateDaySalary = (dayData) => {
+    const { normal, majore } = calculateDayHours(dayData);
+    const normalSalary = normal * settings.tarifHoraire;
+    const majoredSalary = majore * settings.tarifHoraire * settings.tarifMajoration;
+    return normalSalary + majoredSalary;
   };
 
-  // Statistiques mensuelles
-  const getMonthlyStats = () => {
-    const { year, month } = getDaysInMonth(currentDate);
-    
+  const calculateMonthlyStats = () => {
     let totalHours = 0;
+    let totalNormalHours = 0;
+    let totalMajoredHours = 0;
     let totalSalary = 0;
-    let joursTravailles = 0;
-    let joursCongesAssmat = 0;
-    let joursCongesParent = 0;
-    let joursPresence = 0; // Pour calculer les vrais frais mensuels
-    
-    for (let day = 1; day <= getDaysInMonth(currentDate).daysInMonth; day++) {
-      const date = new Date(year, month, day);
-      if (isWeekend(date)) continue;
-      
-      const dayKey = formatDate(date);
-      const dayData = dailyData[dayKey] || {};
-      
+    let workDays = 0;
+    let congeDays = 0;
+    let congeParentDays = 0;
+
+    Object.values(dailyData).forEach(dayData => {
       if (dayData.status === 'conge-assmat') {
-        joursCongesAssmat++;
-        joursPresence++; // Les congés AM comptent pour les frais
-        const avgHours = 8;
-        totalSalary += avgHours * settings.tarifHoraire;
+        congeDays++;
       } else if (dayData.status === 'conge-parent') {
-        joursCongesParent++;
-        joursPresence++; // Les congés parents comptent aussi pour les frais
-        const avgHours = 8;
-        totalSalary += avgHours * settings.tarifHoraire;
+        congeParentDays++;
       } else if (dayData.depot && dayData.reprise) {
-        joursTravailles++;
-        joursPresence++;
-        const hours = calculateDayHours(dayData);
-        totalHours += hours.total;
-        totalSalary += calculateDaySalary(dayData, date);
+        workDays++;
+        const { normal, majore, total } = calculateDayHours(dayData);
+        totalNormalHours += normal;
+        totalMajoredHours += majore;
+        totalHours += total;
+        totalSalary += calculateDaySalary(dayData);
       }
-    }
-    
-    // Frais mensuels calculés sur les jours de présence réels du mois
-    const fraisMensuels = (settings.fraisRepas + settings.fraisEntretien) * joursPresence;
-    totalSalary += fraisMensuels;
-    
-    return {
-      totalHeures: totalHours,
-      moyenneHeuresJour: joursTravailles > 0 ? totalHours / joursTravailles : 0,
-      salaireHoraire: totalSalary - fraisMensuels,
-      fraisMensuels,
-      salaireTotal: totalSalary,
-      joursTravailles,
-      joursCongesAssmat,
-      joursCongesParent,
-      joursPresence
-    };
-  };
-
-  // Calcul des stats pour un mois spécifique (utilisé par le récap annuel)
-  const calculateMonthStats = (date, monthDailyData) => {
-    const { year, month } = getDaysInMonth(date);
-    
-    let totalHours = 0;
-    let totalSalary = 0;
-    let joursTravailles = 0;
-    let joursCongesAssmat = 0;
-    let joursCongesParent = 0;
-    let joursPresence = 0;
-    
-    for (let day = 1; day <= getDaysInMonth(date).daysInMonth; day++) {
-      const dayDate = new Date(year, month, day);
-      if (isWeekend(dayDate)) continue;
-      
-      const dayKey = formatDate(dayDate);
-      const dayData = monthDailyData[dayKey] || {};
-      
-      if (dayData.status === 'conge-assmat') {
-        joursCongesAssmat++;
-        joursPresence++;
-        const avgHours = 8;
-        totalSalary += avgHours * settings.tarifHoraire;
-      } else if (dayData.status === 'conge-parent') {
-        joursCongesParent++;
-        joursPresence++;
-        const avgHours = 8;
-        totalSalary += avgHours * settings.tarifHoraire;
-      } else if (dayData.depot && dayData.reprise) {
-        joursTravailles++;
-        joursPresence++;
-        const hours = calculateDayHours(dayData);
-        totalHours += hours.total;
-        totalSalary += calculateDaySalary(dayData, dayDate);
-      }
-    }
-    
-    const fraisMensuels = (settings.fraisRepas + settings.fraisEntretien) * joursPresence;
-    totalSalary += fraisMensuels;
-    
-    return {
-      totalHeures: totalHours,
-      salaireTotal: totalSalary,
-      joursTravailles,
-      joursCongesAssmat,
-      joursCongesParent,
-      fraisMensuels,
-      joursPresence
-    };
-  };
-
-  // Statistiques annuelles
-  const getAnnualStats = async (year = null) => {
-    const targetYear = year || currentDate.getFullYear();
-    const monthlyData = [];
-    let totalHeuresAnnuel = 0;
-    let totalSalaireAnnuel = 0;
-    let totalJoursTravailles = 0;
-    let totalJoursCongesAssmat = 0;
-    let totalJoursCongesParent = 0;
-    let totalFraisAnnuel = 0;
-
-    // Charger les données de chaque mois de l'année
-    for (let month = 0; month < 12; month++) {
-      const monthDate = new Date(targetYear, month, 1);
-      const monthKey = `${targetYear}-${String(month + 1).padStart(2, '0')}`;
-      
-      try {
-        const response = await fetch(`${API_BASE}/api/data/${monthKey}`);
-        const data = await response.json();
-        
-        if (data.dailyData) {
-          // Calculer les stats pour ce mois spécifique
-          const monthStats = calculateMonthStats(monthDate, data.dailyData);
-          monthlyData.push({
-            month: monthDate.toLocaleDateString('fr-FR', { month: 'long' }),
-            monthKey,
-            ...monthStats
-          });
-          
-          // Ajouter aux totaux annuels
-          totalHeuresAnnuel += monthStats.totalHeures;
-          totalSalaireAnnuel += monthStats.salaireTotal;
-          totalJoursTravailles += monthStats.joursTravailles;
-          totalJoursCongesAssmat += monthStats.joursCongesAssmat;
-          totalJoursCongesParent += monthStats.joursCongesParent;
-          totalFraisAnnuel += monthStats.fraisMensuels;
-        } else {
-          // Mois sans données
-          monthlyData.push({
-            month: monthDate.toLocaleDateString('fr-FR', { month: 'long' }),
-            monthKey,
-            totalHeures: 0,
-            salaireTotal: 0,
-            joursTravailles: 0,
-            joursCongesAssmat: 0,
-            joursCongesParent: 0,
-            fraisMensuels: 0,
-            joursPresence: 0
-          });
-        }
-      } catch (error) {
-        // Erreur de chargement, mois vide
-        monthlyData.push({
-          month: monthDate.toLocaleDateString('fr-FR', { month: 'long' }),
-          monthKey,
-          totalHeures: 0,
-          salaireTotal: 0,
-          joursTravailles: 0,
-          joursCongesAssmat: 0,
-          joursCongesParent: 0,
-          fraisMensuels: 0,
-          joursPresence: 0
-        });
-      }
-    }
-
-    return {
-      year: targetYear,
-      monthlyData,
-      totalHeuresAnnuel,
-      totalSalaireAnnuel,
-      totalJoursTravailles,
-      totalJoursCongesAssmat,
-      totalJoursCongesParent,
-      totalFraisAnnuel,
-      moyenneHeuresAnnuel: totalJoursTravailles > 0 ? totalHeuresAnnuel / totalJoursTravailles : 0,
-      moyenneSalaireAnnuel: totalSalaireAnnuel / 12
-    };
-  };
-
-  // Composant Modal jour (modifié pour multi-sélection)
-  const DayModal = () => {
-    const [formData, setFormData] = useState({
-      depot: '',
-      reprise: '',
-      status: 'normal',
-      notes: ''
     });
 
-    const isMultiDay = selectedDays.length > 1 || (selectedDays.length === 1 && !selectedDay);
-    const targetDays = isMultiDay ? selectedDays.map(dayKey => new Date(dayKey + 'T12:00:00')) : [selectedDay];
+    const fraisRepasTotal = (workDays / settings.joursMenualises) * settings.fraisRepas;
+    const fraisEntretienTotal = (workDays / settings.joursMenualises) * settings.fraisEntretien;
 
-    useEffect(() => {
-      if (selectedDay && !isMultiDay) {
-        // Sélection simple - charger les données existantes
-        const dayKey = formatDate(selectedDay);
-        const existingData = dailyData[dayKey] || {};
-        setFormData({
-          depot: existingData.depot || '',
-          reprise: existingData.reprise || '',
-          status: existingData.status || 'normal',
-          notes: existingData.notes || ''
-        });
-      } else {
-        // Multi-sélection - formulaire vide
-        setFormData({
-          depot: '',
-          reprise: '',
-          status: 'normal',
-          notes: ''
-        });
-      }
-    }, [selectedDay, selectedDays, isMultiDay]);
-
-    const handleSave = () => {
-      if (isMultiDay) {
-        // Sauvegarder pour tous les jours sélectionnés
-        const updates = {};
-        selectedDays.forEach(dayKey => {
-          updates[dayKey] = { ...formData };
-        });
-        setDailyData(prev => ({ ...prev, ...updates }));
-        clearSelection();
-      } else {
-        // Sauvegarder pour un seul jour
-        const dayKey = formatDate(selectedDay);
-        setDailyData(prev => ({
-          ...prev,
-          [dayKey]: formData
-        }));
-      }
-      setShowDayModal(false);
+    return {
+      totalHours,
+      totalNormalHours,
+      totalMajoredHours,
+      totalSalary,
+      workDays,
+      congeDays,
+      congeParentDays,
+      fraisRepasTotal,
+      fraisEntretienTotal,
+      totalWithFrais: totalSalary + fraisRepasTotal + fraisEntretienTotal
     };
-
-    if (!showDayModal) return null;
-
-    const hours = formData.depot && formData.reprise ? calculateDayHours(formData) : null;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4 max-h-96 overflow-y-auto">
-          <h3 className="text-lg font-semibold mb-4">
-            {isMultiDay ? (
-              <span>
-                📅 Saisie multiple - {selectedDays.length} jour{selectedDays.length > 1 ? 's' : ''} sélectionné{selectedDays.length > 1 ? 's' : ''}
-              </span>
-            ) : (
-              selectedDay.toLocaleDateString('fr-FR', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
-              })
-            )}
-          </h3>
-
-          {isMultiDay && (
-            <div className="mb-4 p-3 bg-blue-50 rounded-md">
-              <p className="text-sm text-blue-700">
-                <strong>Jours sélectionnés :</strong>
-              </p>
-              <div className="mt-1 text-xs text-blue-600">
-                {selectedDays.slice(0, 5).map(dayKey => {
-                  const date = new Date(dayKey + 'T12:00:00');
-                  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-                }).join(', ')}
-                {selectedDays.length > 5 && ` et ${selectedDays.length - 5} autre${selectedDays.length - 5 > 1 ? 's' : ''}...`}
-              </div>
-            </div>
-          )}
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Statut du jour</label>
-              <select 
-                value={formData.status} 
-                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="normal">Jour normal</option>
-                <option value="conge-assmat">Congé assistant maternel</option>
-                <option value="conge-parent">Pas de dépôt (congé parent)</option>
-              </select>
-            </div>
-
-            {formData.status === 'normal' && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Dépôt</label>
-                    <input
-                      type="time"
-                      value={formData.depot}
-                      onChange={(e) => setFormData(prev => ({ ...prev, depot: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Reprise</label>
-                    <input
-                      type="time"
-                      value={formData.reprise}
-                      onChange={(e) => setFormData(prev => ({ ...prev, reprise: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {hours && !isMultiDay && (
-                  <div className="bg-gray-50 p-3 rounded-md">
-                    <p className="text-sm"><strong>Total:</strong> {hours.total.toFixed(2)}h</p>
-                    <p className="text-sm"><strong>Normales:</strong> {hours.normales.toFixed(2)}h</p>
-                    {hours.majorees > 0 && (
-                      <p className="text-sm text-orange-600"><strong>Majorées:</strong> {hours.majorees.toFixed(2)}h</p>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-                rows="2"
-                placeholder={isMultiDay ? "Notes qui seront appliquées à tous les jours sélectionnés" : ""}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={handleSave}
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-            >
-              {isMultiDay ? `Enregistrer (${selectedDays.length} jours)` : 'Enregistrer'}
-            </button>
-            <button
-              onClick={() => {
-                setShowDayModal(false);
-                if (isMultiDay) clearSelection();
-              }}
-              className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
-            >
-              Annuler
-            </button>
-          </div>
-        </div>
-      </div>
-    );
   };
 
-  // Composant Paramètres
-  const SettingsPanel = () => {
-    const [tempSettings, setTempSettings] = useState(settings);
-
-    if (!showSettings) return null;
-
-    const handleSave = async () => {
-      const success = await saveSettings(tempSettings);
-      if (success) {
-        setSettings(tempSettings);
-        setShowSettings(false);
-      }
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4 max-h-96 overflow-y-auto">
-          <h3 className="text-lg font-semibold mb-4">Paramètres</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Tarif horaire (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={tempSettings.tarifHoraire}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, tarifHoraire: parseFloat(e.target.value) }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Seuil majoration (heures/jour)</label>
-              <input
-                type="number"
-                step="0.5"
-                value={tempSettings.seuilMajoration}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, seuilMajoration: parseFloat(e.target.value) }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Taux majoration</label>
-              <input
-                type="number"
-                step="0.01"
-                value={tempSettings.tarifMajoration}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, tarifMajoration: parseFloat(e.target.value) }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Frais repas/jour (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={tempSettings.fraisRepas}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, fraisRepas: parseFloat(e.target.value) }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Frais entretien/jour (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={tempSettings.fraisEntretien}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, fraisEntretien: parseFloat(e.target.value) }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Jours mensualisés</label>
-              <input
-                type="number"
-                value={tempSettings.joursMenualises}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, joursMenualises: parseInt(e.target.value) }))}
-                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={handleSave}
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Enregistrer
-            </button>
-            <button
-              onClick={() => setShowSettings(false)}
-              className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
-            >
-              Annuler
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Composant Vue Annuelle
-  const AnnualView = () => {
-    const [annualStats, setAnnualStats] = useState(null);
-    const [loadingAnnual, setLoadingAnnual] = useState(false);
-    const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-
-    const loadAnnualData = async (year = null) => {
-      setLoadingAnnual(true);
-      try {
-        const stats = await getAnnualStats(year || selectedYear);
-        setAnnualStats(stats);
-      } catch (error) {
-        console.error('Erreur chargement données annuelles:', error);
-      } finally {
-        setLoadingAnnual(false);
-      }
-    };
-
-    // Charger les données au montage et lors du changement d'année
-    useEffect(() => {
-      if (showAnnualView) {
-        loadAnnualData(selectedYear);
-      }
-    }, [showAnnualView, selectedYear]);
-
-    // Réinitialiser l'année sélectionnée quand on ouvre la vue
-    useEffect(() => {
-      if (showAnnualView) {
-        setSelectedYear(currentDate.getFullYear());
-      }
-    }, [showAnnualView]);
-
-    const changeYear = (direction) => {
-      const newYear = selectedYear + direction;
-      setSelectedYear(newYear);
-    };
-
-    if (!showAnnualView) return null;
-
-    return (
-      <div className="fixed inset-0 bg-white z-40 overflow-y-auto">
-        <div className="max-w-6xl mx-auto p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <BarChart3 className="h-6 w-6" />
-                Récapitulatif Annuel
-                {loadingAnnual && <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />}
-              </h2>
-              
-              {/* Navigation années */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => changeYear(-1)}
-                  disabled={loadingAnnual}
-                  className="px-3 py-1 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50"
-                >
-                  ← 
-                </button>
-                <span className="font-semibold text-lg px-3 py-1 bg-gray-100 rounded">
-                  {selectedYear}
-                </span>
-                <button
-                  onClick={() => changeYear(1)}
-                  disabled={loadingAnnual}
-                  className="px-3 py-1 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50"
-                >
-                  →
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex gap-2">
-              <button
-                onClick={() => loadAnnualData(selectedYear)}
-                disabled={loadingAnnual}
-                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${loadingAnnual ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                onClick={() => setShowAnnualView(false)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-
-          {loadingAnnual ? (
-            <div className="text-center py-12">
-              <RefreshCw className="h-8 w-8 animate-spin mx-auto text-blue-500 mb-4" />
-              <p className="text-gray-600">Chargement des données annuelles...</p>
-            </div>
-          ) : annualStats ? (
-            <div className="space-y-6">
-              {/* Totaux annuels */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-2">Heures Totales</h3>
-                  <p className="text-3xl font-bold">{annualStats.totalHeuresAnnuel.toFixed(1)}h</p>
-                  <p className="text-blue-100 text-sm">Moy: {annualStats.moyenneHeuresAnnuel.toFixed(1)}h/jour</p>
-                </div>
-                
-                <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-2">Salaire Total</h3>
-                  <p className="text-3xl font-bold">{annualStats.totalSalaireAnnuel.toFixed(0)} €</p>
-                  <p className="text-green-100 text-sm">Moy: {annualStats.moyenneSalaireAnnuel.toFixed(0)} €/mois</p>
-                </div>
-                
-                <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-2">Jours Travaillés</h3>
-                  <p className="text-3xl font-bold">{annualStats.totalJoursTravailles}</p>
-                  <p className="text-purple-100 text-sm">Congés AM: {annualStats.totalJoursCongesAssmat}</p>
-                </div>
-                
-                <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-2">Frais Totaux</h3>
-                  <p className="text-3xl font-bold">{annualStats.totalFraisAnnuel.toFixed(0)} €</p>
-                  <p className="text-orange-100 text-sm">Repas + Entretien</p>
-                </div>
-              </div>
-
-              {/* Indication de l'année affichée */}
-              <div className="text-center">
-                <p className="text-gray-600 text-sm">
-                  Données pour l'année <strong>{annualStats.year}</strong>
-                  {annualStats.year !== currentDate.getFullYear() && 
-                    <span className="text-blue-600"> (année différente de la consultation actuelle)</span>
-                  }
-                </p>
-              </div>
-
-              {/* Tableau mensuel détaillé */}
-              <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b">
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Mois</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">Heures</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">Jours trav.</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">Congés AM</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">Congés Parent</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">Frais</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">Salaire Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {annualStats.monthlyData.map((monthData, index) => (
-                      <tr key={monthData.monthKey} className={`border-b hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`}>
-                        <td className="px-4 py-3 font-medium text-gray-900">{monthData.month}</td>
-                        <td className="px-4 py-3 text-right">
-                          {monthData.totalHeures > 0 ? `${monthData.totalHeures.toFixed(1)}h` : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {monthData.joursTravailles > 0 ? monthData.joursTravailles : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right text-orange-600">
-                          {monthData.joursCongesAssmat > 0 ? monthData.joursCongesAssmat : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right text-blue-600">
-                          {monthData.joursCongesParent > 0 ? monthData.joursCongesParent : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
-                          {monthData.fraisMensuels > 0 ? `${monthData.fraisMensuels.toFixed(0)} €` : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-green-600">
-                          {monthData.salaireTotal > 0 ? `${monthData.salaireTotal.toFixed(0)} €` : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-gray-100 border-t-2 font-semibold">
-                      <td className="px-4 py-3 text-gray-900">TOTAUX ANNUELS</td>
-                      <td className="px-4 py-3 text-right text-gray-900">{annualStats.totalHeuresAnnuel.toFixed(1)}h</td>
-                      <td className="px-4 py-3 text-right text-gray-900">{annualStats.totalJoursTravailles}</td>
-                      <td className="px-4 py-3 text-right text-orange-600">{annualStats.totalJoursCongesAssmat}</td>
-                      <td className="px-4 py-3 text-right text-blue-600">{annualStats.totalJoursCongesParent}</td>
-                      <td className="px-4 py-3 text-right text-gray-900">{annualStats.totalFraisAnnuel.toFixed(0)} €</td>
-                      <td className="px-4 py-3 text-right font-bold text-green-600 text-lg">{annualStats.totalSalaireAnnuel.toFixed(0)} €</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-gray-500">Impossible de charger les données annuelles</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // Composant Modal de duplication
-  const DuplicateModal = () => {
-    const [targetDays, setTargetDays] = useState([]);
-
-    if (!showDuplicateModal || !duplicateSource) return null;
-
-    const sourceDate = new Date(duplicateSource + 'T12:00:00');
-    const sourceData = dailyData[duplicateSource];
-
-    const handleDayToggle = (dayKey) => {
-      setTargetDays(prev => {
-        if (prev.includes(dayKey)) {
-          return prev.filter(d => d !== dayKey);
-        } else {
-          return [...prev, dayKey];
-        }
-      });
-    };
-
-    const handleDuplicate = () => {
-      if (targetDays.length === 0) return;
-
-      const updates = {};
-      targetDays.forEach(dayKey => {
-        updates[dayKey] = { ...sourceData };
-      });
-      
-      setDailyData(prev => ({ ...prev, ...updates }));
-      setShowDuplicateModal(false);
-      setDuplicateSource(null);
-      setTargetDays([]);
-    };
-
-    // Générer les jours du mois courant pour sélection
-    const { daysInMonth, year, month } = getDaysInMonth(currentDate);
-    const availableDays = [];
+  const calculateAnnualStats = (monthsData, year) => {
+    let totalHours = 0;
+    let totalSalary = 0;
+    let totalWorkDays = 0;
+    let totalCongeDays = 0;
+    let totalCongeParentDays = 0;
+    let totalFraisRepas = 0;
+    let totalFraisEntretien = 0;
     
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month, day);
-      if (!isWeekend(date)) {
-        const dayKey = formatDate(date);
-        if (dayKey !== duplicateSource) { // Exclure le jour source
-          availableDays.push({ date, dayKey });
+    const monthlyDetails = monthsData.map(({ month, data }) => {
+      let monthHours = 0;
+      let monthSalary = 0;
+      let monthWorkDays = 0;
+      let monthCongeDays = 0;
+      let monthCongeParentDays = 0;
+
+      Object.values(data).forEach(dayData => {
+        if (dayData.status === 'conge-assmat') {
+          monthCongeDays++;
+        } else if (dayData.status === 'conge-parent') {
+          monthCongeParentDays++;
+        } else if (dayData.depot && dayData.reprise) {
+          monthWorkDays++;
+          const { total } = calculateDayHours(dayData);
+          monthHours += total;
+          monthSalary += calculateDaySalary(dayData);
         }
-      }
-    }
+      });
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4 max-h-96 overflow-y-auto">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            📋 Dupliquer les données
-          </h3>
+      const monthFraisRepas = (monthWorkDays / settings.joursMenualises) * settings.fraisRepas;
+      const monthFraisEntretien = (monthWorkDays / settings.joursMenualises) * settings.fraisEntretien;
 
-          <div className="mb-4 p-3 bg-blue-50 rounded-md">
-            <p className="text-sm font-medium text-blue-900">Jour source :</p>
-            <p className="text-sm text-blue-700">
-              {sourceDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
-            <div className="mt-2 text-xs text-blue-600">
-              {sourceData?.status === 'normal' && sourceData?.depot && sourceData?.reprise && (
-                <span>{formatTimeRangeFrench(sourceData.depot, sourceData.reprise)}</span>
-              )}
-              {sourceData?.status === 'conge-assmat' && <span>Congé assistant maternel</span>}
-              {sourceData?.status === 'conge-parent' && <span>Congé parent</span>}
-            </div>
-          </div>
+      totalHours += monthHours;
+      totalSalary += monthSalary;
+      totalWorkDays += monthWorkDays;
+      totalCongeDays += monthCongeDays;
+      totalCongeParentDays += monthCongeParentDays;
+      totalFraisRepas += monthFraisRepas;
+      totalFraisEntretien += monthFraisEntretien;
 
-          <div className="mb-4">
-            <p className="text-sm font-medium mb-2">Sélectionnez les jours de destination :</p>
-            <div className="max-h-40 overflow-y-auto border rounded-md">
-              {availableDays.map(({ date, dayKey }) => {
-                const isSelected = targetDays.includes(dayKey);
-                const hasExistingData = dailyData[dayKey] && 
-                  (dailyData[dayKey].depot || dailyData[dayKey].status !== 'normal');
-                
-                return (
-                  <div
-                    key={dayKey}
-                    onClick={() => handleDayToggle(dayKey)}
-                    className={`p-2 border-b cursor-pointer hover:bg-gray-50 flex justify-between items-center ${
-                      isSelected ? 'bg-blue-100' : ''
-                    }`}
-                  >
-                    <span className="text-sm">
-                      {date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {hasExistingData && (
-                        <span className="text-xs text-orange-600 bg-orange-100 px-1 rounded">
-                          Données
-                        </span>
-                      )}
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleDayToggle(dayKey)}
-                        className="rounded"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {targetDays.length > 0 && (
-            <div className="mb-4 p-2 bg-yellow-50 rounded-md">
-              <p className="text-xs text-yellow-700">
-                ⚠️ {targetDays.filter(dayKey => 
-                  dailyData[dayKey] && (dailyData[dayKey].depot || dailyData[dayKey].status !== 'normal')
-                ).length} jour(s) avec données existantes seront remplacés.
-              </p>
-            </div>
-          )}
-
-          <div className="flex gap-3">
-            <button
-              onClick={handleDuplicate}
-              disabled={targetDays.length === 0}
-              className="flex-1 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Dupliquer sur {targetDays.length} jour{targetDays.length > 1 ? 's' : ''}
-            </button>
-            <button
-              onClick={() => {
-                setShowDuplicateModal(false);
-                setDuplicateSource(null);
-                setTargetDays([]);
-              }}
-              className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
-            >
-              Annuler
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Export/Import et Sauvegarde manuelle
-  const exportData = async () => {
-    try {
-      const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-      const data = {
-        dailyData,
-        settings,
-        month: monthKey,
-        exportDate: new Date().toISOString()
+      return {
+        month,
+        monthName: new Date(year, month - 1).toLocaleDateString('fr-FR', { month: 'long' }),
+        hours: monthHours,
+        salary: monthSalary,
+        workDays: monthWorkDays,
+        congeDays: monthCongeDays,
+        congeParentDays: monthCongeParentDays,
+        fraisRepas: monthFraisRepas,
+        fraisEntretien: monthFraisEntretien,
+        total: monthSalary + monthFraisRepas + monthFraisEntretien
       };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `assistant-maternel-${monthKey}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      alert('Erreur lors de l\'export');
+    });
+
+    return {
+      year,
+      totalHours: Math.round(totalHours * 100) / 100,
+      totalSalary: Math.round(totalSalary * 100) / 100,
+      totalWorkDays,
+      totalCongeDays,
+      totalCongeParentDays,
+      totalFraisRepas: Math.round(totalFraisRepas * 100) / 100,
+      totalFraisEntretien: Math.round(totalFraisEntretien * 100) / 100,
+      grandTotal: Math.round((totalSalary + totalFraisRepas + totalFraisEntretien) * 100) / 100,
+      monthlyDetails,
+      averageHoursPerMonth: Math.round((totalHours / 12) * 100) / 100,
+      averageSalaryPerMonth: Math.round((totalSalary / 12) * 100) / 100
+    };
+  };
+
+  // Actions
+  const manualSave = async () => {
+    const success = await saveMonthData(currentDate, dailyData);
+    if (success) {
+      alert('Données sauvegardées avec succès !');
+    } else {
+      alert('Erreur lors de la sauvegarde');
     }
   };
 
-  const importData = async (event) => {
+  const reloadData = () => {
+    loadMonthData(currentDate);
+  };
+
+  const exportData = () => {
+    const dataToExport = {
+      month: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`,
+      data: dailyData,
+      settings: settings,
+      exportedAt: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `assmat-${dataToExport.month}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target.result);
+        const imported = JSON.parse(e.target.result);
         
-        if (data.dailyData) {
-          setDailyData(data.dailyData);
-          await saveMonthData(currentDate, data.dailyData);
+        if (imported.data) {
+          setDailyData(imported.data);
+          if (imported.settings) {
+            setSettings(imported.settings);
+          }
+          alert('Données importées avec succès !');
+        } else {
+          alert('Format de fichier invalide');
         }
-        
-        if (data.settings) {
-          await saveSettings(data.settings);
-          setSettings(data.settings);
-        }
-        
-        alert('Données importées avec succès !');
       } catch (error) {
-        alert('Erreur lors de l\'import des données');
+        alert('Erreur lors de l\'importation');
       }
     };
     reader.readAsText(file);
-    
     event.target.value = '';
   };
 
-  const manualSave = async () => {
-    setLoading(true);
-    const success = await saveMonthData(currentDate, dailyData);
-    if (success) {
-      alert('Données sauvegardées !');
+  const openDayModal = (date) => {
+    setSelectedDay(date);
+    setShowDayModal(true);
+  };
+
+  const handleDayClick = (date) => {
+    if (multiSelectMode) {
+      toggleDaySelection(date);
+    } else {
+      openDayModal(date);
     }
-    setLoading(false);
   };
 
-  const reloadData = async () => {
-    await loadMonthData(currentDate);
-    await loadSettings();
-    alert('Données rechargées !');
+  const saveDayData = (dayData) => {
+    if (selectedDays.length > 0) {
+      // Sauvegarder pour tous les jours sélectionnés
+      const newData = { ...dailyData };
+      selectedDays.forEach(dateKey => {
+        newData[dateKey] = { ...dayData };
+      });
+      setDailyData(newData);
+      clearSelection();
+    } else if (selectedDay) {
+      // Sauvegarder pour un seul jour
+      const dateKey = formatDate(selectedDay);
+      setDailyData(prev => ({
+        ...prev,
+        [dateKey]: { ...dayData }
+      }));
+    }
+    setShowDayModal(false);
+    setSelectedDay(null);
   };
-
-  const stats = getMonthlyStats();
 
   // Génération du calendrier
   const renderCalendar = () => {
     const { daysInMonth, startWeekday, year, month } = getDaysInMonth(currentDate);
     const days = [];
     
+    // Jours vides du début
     for (let i = 0; i < startWeekday - 1; i++) {
       days.push(<div key={`empty-${i}`} className="h-24"></div>);
     }
     
+    // Jours du mois
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
       const dayKey = formatDate(date);
@@ -1143,74 +494,55 @@ const AssistantMaternelTracker = () => {
       } else if (dayData.status === 'conge-assmat') {
         bgColor = 'bg-orange-100 hover:bg-orange-200';
         statusText = 'Congé AM';
+        textColor = 'text-orange-800';
       } else if (dayData.status === 'conge-parent') {
         bgColor = 'bg-blue-100 hover:bg-blue-200';
-        statusText = 'Congé Parent';
+        statusText = 'Congé parent';
+        textColor = 'text-blue-800';
       } else if (dayData.depot && dayData.reprise) {
-        bgColor = 'bg-green-100 hover:bg-green-200';
-        const hours = calculateDayHours(dayData);
-        statusText = `${hours.total.toFixed(1)}h`;
+        bgColor = 'bg-green-50 hover:bg-green-100';
+        borderStyle = 'border-green-200';
+        textColor = 'text-green-900';
       }
 
-      // Style pour sélection multiple
       if (isSelected) {
-        borderStyle = 'border-blue-500 border-2';
-        bgColor = bgColor.replace('hover:bg-', 'bg-').replace('100', '200');
+        borderStyle = 'border-2 border-blue-500';
+        bgColor += ' ring-2 ring-blue-200';
       }
 
-      const handleDayClick = (event) => {
-        if (isWeekendDay) return;
+      const { total } = calculateDayHours(dayData);
 
-        if (multiSelectMode) {
-          // Mode sélection multiple
-          toggleDaySelection(date);
-        } else if (event.ctrlKey || event.metaKey) {
-          // Ctrl/Cmd + clic = démarrer sélection multiple
-          setMultiSelectMode(true);
-          toggleDaySelection(date);
-        } else if (event.shiftKey && dayData.depot && dayData.reprise) {
-          // Shift + clic = dupliquer ce jour
-          setDuplicateSource(dayKey);
-          setShowDuplicateModal(true);
-        } else {
-          // Clic normal = ouvrir modal
-          setSelectedDay(date);
-          setShowDayModal(true);
-        }
-      };
-      
       days.push(
         <div
           key={day}
-          onClick={handleDayClick}
-          className={`h-24 border ${borderStyle} p-2 cursor-pointer ${bgColor} ${textColor} ${
-            isWeekendDay ? 'cursor-not-allowed' : ''
-          } relative transition-all duration-200`}
-          title={
-            isWeekendDay 
-              ? 'Week-end'
-              : multiSelectMode 
-                ? 'Cliquez pour sélectionner/désélectionner'
-                : 'Clic = Modifier • Ctrl+Clic = Sélection multiple • Shift+Clic = Dupliquer'
-          }
+          className={`${bgColor} ${borderStyle} border rounded-lg p-2 h-24 cursor-pointer transition-all duration-200 flex flex-col justify-between ${textColor}`}
+          onClick={() => handleDayClick(date)}
         >
-          <div className="font-semibold">{day}</div>
-          <div className="text-xs mt-1">
-            {formatTimeRangeFrench(dayData.depot, dayData.reprise)}
-          </div>
-          <div className="text-xs text-center mt-1 font-medium">
-            {statusText}
+          <div className="flex justify-between items-start">
+            <span className="font-medium">{day}</span>
+            {dayData.depot && dayData.reprise && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDuplicateSource(dayData);
+                  setShowDuplicateModal(true);
+                }}
+                className="text-xs opacity-60 hover:opacity-100 transition-opacity"
+                title="Dupliquer ces horaires"
+              >
+                📋
+              </button>
+            )}
           </div>
           
-          {/* Indicateur de sélection */}
-          {isSelected && (
-            <div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+          {statusText && (
+            <div className="text-xs font-medium">{statusText}</div>
           )}
-
-          {/* Indicateur de duplication possible */}
-          {dayData.depot && dayData.reprise && !isSelected && !multiSelectMode && (
-            <div className="absolute bottom-1 right-1 text-xs text-gray-400">
-              📋
+          
+          {dayData.depot && dayData.reprise && (
+            <div className="text-xs space-y-1">
+              <div>{formatTimeRangeFrench(dayData.depot, dayData.reprise)}</div>
+              <div className="font-medium">{total.toFixed(1)}h</div>
             </div>
           )}
         </div>
@@ -1220,79 +552,559 @@ const AssistantMaternelTracker = () => {
     return days;
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* En-tête */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+  // Composants modaux
+  const DayModal = () => {
+    const [depot, setDepot] = useState('');
+    const [reprise, setReprise] = useState('');
+    const [status, setStatus] = useState('travail');
+
+    useEffect(() => {
+      if (showDayModal) {
+        if (selectedDay && !selectedDays.length) {
+          const dayKey = formatDate(selectedDay);
+          const dayData = dailyData[dayKey] || {};
+          setDepot(dayData.depot || '');
+          setReprise(dayData.reprise || '');
+          setStatus(dayData.status || 'travail');
+        } else {
+          setDepot('');
+          setReprise('');
+          setStatus('travail');
+        }
+      }
+    }, [showDayModal, selectedDay, selectedDays]);
+
+    if (!showDayModal) return null;
+
+    const handleSave = () => {
+      const dayData = status === 'travail' ? { depot, reprise, status } : { status };
+      saveDayData(dayData);
+    };
+
+    const title = selectedDays.length > 0 
+      ? `Modification groupée (${selectedDays.length} jours)`
+      : selectedDay 
+        ? `${selectedDay.getDate()} ${selectedDay.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`
+        : 'Nouveau jour';
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        onClick={(e) => e.target === e.currentTarget && setShowDayModal(false)}
+      >
+        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-lg font-semibold mb-4">{title}</h3>
+          
+          <div className="space-y-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Calendar className="h-6 w-6" />
-                Suivi Assistant Maternel
-                {loading && <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />}
-              </h1>
-              <p className="text-gray-600 mt-1">
-                {currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-              </p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Type de journée
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="travail">Journée de travail</option>
+                <option value="conge-assmat">Congé assistant maternel</option>
+                <option value="conge-parent">Congé parent</option>
+              </select>
+            </div>
+
+            {status === 'travail' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Heure de dépôt
+                  </label>
+                  <input
+                    type="time"
+                    value={depot}
+                    onChange={(e) => setDepot(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Heure de reprise
+                  </label>
+                  <input
+                    type="time"
+                    value={reprise}
+                    onChange={(e) => setReprise(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {depot && reprise && (
+                  <div className="bg-green-50 p-3 rounded-md">
+                    <div className="text-sm font-medium text-green-900">
+                      Aperçu des calculs
+                    </div>
+                    <div className="text-sm text-green-700 mt-1">
+                      {(() => {
+                        const tempData = { depot, reprise, status };
+                        const { normal, majore, total } = calculateDayHours(tempData);
+                        const salary = calculateDaySalary(tempData);
+                        return (
+                          <>
+                            <div>Durée totale: {total.toFixed(1)}h</div>
+                            {majore > 0 && (
+                              <div>Dont majorées: {majore.toFixed(1)}h</div>
+                            )}
+                            <div>Salaire: {salary.toFixed(2)}€</div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              onClick={() => setShowDayModal(false)}
+              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Enregistrer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const SettingsPanel = () => {
+    if (!showSettings) return null;
+
+    const handleSave = async () => {
+      const success = await saveSettings(settings);
+      if (success) {
+        alert('Paramètres sauvegardés !');
+      } else {
+        alert('Erreur lors de la sauvegarde');
+      }
+      setShowSettings(false);
+    };
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}
+      >
+        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-lg font-semibold mb-4">⚙️ Paramètres</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Tarif horaire (€)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={settings.tarifHoraire}
+                onChange={(e) => setSettings(prev => ({ ...prev, tarifHoraire: parseFloat(e.target.value) || 0 }))}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Jours mensualisés
+              </label>
+              <input
+                type="number"
+                value={settings.joursMenualises}
+                onChange={(e) => setSettings(prev => ({ ...prev, joursMenualises: parseInt(e.target.value) || 0 }))}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Seuil majoration (heures)
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                value={settings.seuilMajoration}
+                onChange={(e) => setSettings(prev => ({ ...prev, seuilMajoration: parseFloat(e.target.value) || 0 }))}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Taux majoration (multiplicateur)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={settings.tarifMajoration}
+                onChange={(e) => setSettings(prev => ({ ...prev, tarifMajoration: parseFloat(e.target.value) || 0 }))}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Frais repas mensuels (€)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={settings.fraisRepas}
+                onChange={(e) => setSettings(prev => ({ ...prev, fraisRepas: parseFloat(e.target.value) || 0 }))}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Frais d'entretien (€)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={settings.fraisEntretien}
+                onChange={(e) => setSettings(prev => ({ ...prev, fraisEntretien: parseFloat(e.target.value) || 0 }))}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
             
-            <div className="flex flex-wrap gap-2">
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              onClick={() => setShowSettings(false)}
+              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Sauvegarder
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const AnnualView = () => {
+    const changeYear = (direction) => {
+      setSelectedYear(prev => prev + direction);
+    };
+
+    const handleClose = () => {
+      setShowAnnualView(false);
+    };
+
+    if (!showAnnualView) return null;
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        onClick={(e) => e.target === e.currentTarget && handleClose()}
+      >
+        <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col">
+          <div className="flex justify-between items-center p-6 border-b">
+            <h3 className="text-xl font-semibold">📊 Récapitulatif Annuel {selectedYear}</h3>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => changeYear(-1)}
+                  className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                >
+                  ←
+                </button>
+                <span className="font-medium min-w-[4rem] text-center">{selectedYear}</span>
+                <button
+                  onClick={() => changeYear(1)}
+                  className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                >
+                  →
+                </button>
+              </div>
+              <button
+                onClick={handleClose}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
+              >
+                ✕ Fermer
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            {loadingAnnual ? (
+              <div className="flex justify-center items-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin text-blue-500" />
+                <span className="ml-2 text-gray-600">Chargement des données annuelles...</span>
+              </div>
+            ) : annualStats ? (
+              <div className="space-y-6">
+                {/* Résumé annuel */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-900">{annualStats.totalHours}h</div>
+                    <div className="text-blue-700">Heures totales</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-green-900">{annualStats.totalSalary.toFixed(2)}€</div>
+                    <div className="text-green-700">Salaire total</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-900">{annualStats.totalWorkDays}</div>
+                    <div className="text-purple-700">Jours travaillés</div>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-900">{annualStats.grandTotal.toFixed(2)}€</div>
+                    <div className="text-orange-700">Total avec frais</div>
+                  </div>
+                </div>
+
+                {/* Détail mensuel */}
+                <div className="bg-white rounded-lg border">
+                  <div className="p-4 border-b">
+                    <h4 className="font-semibold">Détail par mois</h4>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Mois</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Heures</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Jours</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Salaire</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Frais</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium text-gray-900">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {annualStats.monthlyDetails.map((month) => (
+                          <tr key={month.month} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-900 capitalize">{month.monthName}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 text-right">{month.hours.toFixed(1)}h</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 text-right">{month.workDays}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 text-right">{month.salary.toFixed(2)}€</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                              {(month.fraisRepas + month.fraisEntretien).toFixed(2)}€
+                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900 text-right">
+                              {month.total.toFixed(2)}€
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900">TOTAL</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.totalHours}h</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.totalWorkDays}</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.totalSalary.toFixed(2)}€</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">
+                            {(annualStats.totalFraisRepas + annualStats.totalFraisEntretien).toFixed(2)}€
+                          </td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.grandTotal.toFixed(2)}€</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Moyennes */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">Moyennes mensuelles</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Heures:</span>
+                      <span className="ml-2 font-medium">{annualStats.averageHoursPerMonth}h</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Salaire:</span>
+                      <span className="ml-2 font-medium">{annualStats.averageSalaryPerMonth.toFixed(2)}€</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Jours:</span>
+                      <span className="ml-2 font-medium">{Math.round(annualStats.totalWorkDays / 12)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Total:</span>
+                      <span className="ml-2 font-medium">{(annualStats.grandTotal / 12).toFixed(2)}€</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                Aucune donnée disponible pour {selectedYear}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const DuplicateModal = () => {
+    if (!showDuplicateModal || !duplicateSource) return null;
+
+    const handleDuplicate = () => {
+      setMultiSelectMode(true);
+      setShowDuplicateModal(false);
+      setDuplicateSource(null);
+    };
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        onClick={(e) => e.target === e.currentTarget && setShowDuplicateModal(false)}
+      >
+        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-lg font-semibold mb-4">📋 Dupliquer les horaires</h3>
+          
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-3 rounded-md">
+              <div className="text-sm font-medium text-gray-900">Horaires à dupliquer :</div>
+              <div className="text-sm text-gray-700 mt-1">
+                {formatTimeRangeFrench(duplicateSource.depot, duplicateSource.reprise)}
+              </div>
+              <div className="text-sm text-gray-700">
+                Durée : {calculateDayHours(duplicateSource).total.toFixed(1)}h
+              </div>
+            </div>
+            
+            <p className="text-sm text-gray-600">
+              Cliquez sur "Continuer" puis sélectionnez les jours où vous souhaitez appliquer ces horaires.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              onClick={() => setShowDuplicateModal(false)}
+              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleDuplicate}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Continuer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Menu Actions
+  const renderActionsMenu = () => {
+    return (
+      <div className={`absolute top-full right-0 mt-1 w-48 bg-white rounded-md shadow-lg border z-10 transition-all duration-200 ${
+        showActionsMenu ? 'opacity-100 visible' : 'opacity-0 invisible'
+      }`}>
+        <button
+          onClick={manualSave}
+          disabled={loading}
+          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"
+        >
+          <Save className="h-4 w-4" />
+          Sauvegarder
+        </button>
+        
+        <button
+          onClick={reloadData}
+          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Recharger
+        </button>
+        
+        <hr className="my-1" />
+        
+        <button
+          onClick={exportData}
+          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+        >
+          <Download className="h-4 w-4" />
+          Exporter
+        </button>
+        
+        <label className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 cursor-pointer">
+          <Upload className="h-4 w-4" />
+          Importer
+          <input
+            type="file"
+            accept=".json"
+            onChange={importData}
+            className="hidden"
+          />
+        </label>
+        
+        <hr className="my-1" />
+        
+        <label className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoSave}
+            onChange={(e) => setAutoSave(e.target.checked)}
+            className="rounded mr-2"
+          />
+          Auto-sauvegarde
+        </label>
+      </div>
+    );
+  };
+
+  const monthlyStats = calculateMonthlyStats();
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">🍼</span>
+              </div>
+              <h1 className="text-xl font-bold text-gray-900">AssmatTracker</h1>
+              {loading && <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />}
+            </div>
+            
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowAnnualView(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200 transition-colors"
               >
                 <BarChart3 className="h-4 w-4" />
-                Récap Annuel
+                Vue annuelle
               </button>
 
-              <button
-                onClick={() => {
-                  if (multiSelectMode) {
-                    clearSelection();
-                  } else {
-                    setMultiSelectMode(true);
-                  }
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-                  multiSelectMode 
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200' 
-                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                }`}
-              >
-                {multiSelectMode ? '✕' : '☑️'}
-                {multiSelectMode ? 'Quitter sélection' : 'Sélection multiple'}
-              </button>
-
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-md">
-                <input
-                  type="checkbox"
-                  id="autosave"
-                  checked={autoSave}
-                  onChange={(e) => setAutoSave(e.target.checked)}
-                  className="rounded"
-                />
-                <label htmlFor="autosave" className="text-sm text-gray-700">Auto-save</label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowActionsMenu(!showActionsMenu)}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Actions
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+                {renderActionsMenu()}
               </div>
 
-              <button
-                onClick={manualSave}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors disabled:opacity-50"
-              >
-                <Save className="h-4 w-4" />
-                {loading ? 'Sauvegarde...' : 'Sauver'}
-              </button>
-
-              <button
-                onClick={reloadData}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Recharger
-              </button>
-              
               <button
                 onClick={() => setShowSettings(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
@@ -1300,29 +1112,12 @@ const AssistantMaternelTracker = () => {
                 <Settings className="h-4 w-4" />
                 Paramètres
               </button>
-              
-              <button
-                onClick={exportData}
-                className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
-              >
-                <Download className="h-4 w-4" />
-                Export
-              </button>
-              
-              <label className="flex items-center gap-2 px-4 py-2 bg-orange-100 text-orange-700 rounded-md hover:bg-orange-200 transition-colors cursor-pointer">
-                <Upload className="h-4 w-4" />
-                Import
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={importData}
-                  className="hidden"
-                />
-              </label>
             </div>
           </div>
         </div>
+      </div>
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Calendrier */}
           <div className="lg:col-span-3">
@@ -1358,162 +1153,270 @@ const AssistantMaternelTracker = () => {
                       <button
                         onClick={() => {
                           setShowDayModal(true);
-                          setSelectedDay(null); // Force multi-day mode
+                          setSelectedDay(null);
                         }}
                         className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                       >
-                        📝 Saisir les heures
+                        🔧 Modifier
+                      </button>
+                    )}
+                    {duplicateSource && (
+                      <button
+                        onClick={() => {
+                          const newData = { ...dailyData };
+                          selectedDays.forEach(dateKey => {
+                            newData[dateKey] = { ...duplicateSource };
+                          });
+                          setDailyData(newData);
+                          clearSelection();
+                          setDuplicateSource(null);
+                        }}
+                        className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                      >
+                        📋 Dupliquer
                       </button>
                     )}
                   </div>
                   <button
                     onClick={clearSelection}
-                    className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                    className="px-3 py-1 text-xs text-gray-600 hover:bg-white rounded transition-colors"
                   >
                     ✕ Annuler
                   </button>
                 </div>
               )}
 
-              {/* Instructions d'utilisation */}
-              {!multiSelectMode && selectedDays.length === 0 && (
-                <div className="px-4 py-2 bg-gray-50 border-b">
-                  <div className="text-xs text-gray-600 text-center">
-                    💡 <strong>Clic</strong> = modifier • <strong>Cmd+Clic</strong> = sélection multiple • <strong>Shift+Clic</strong> = dupliquer
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-7 bg-gray-50">
+              {/* En-têtes des jours */}
+              <div className="grid grid-cols-7 gap-1 p-4 border-b bg-gray-50">
                 {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
-                  <div key={day} className="p-3 text-center font-medium text-gray-700 border-r border-gray-200 last:border-r-0">
+                  <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
                     {day}
                   </div>
                 ))}
               </div>
 
-              <div className="grid grid-cols-7">
+              {/* Calendrier */}
+              <div className="grid grid-cols-7 gap-1 p-4">
                 {renderCalendar()}
+              </div>
+
+              {/* Instructions et raccourcis */}
+              <div className="p-4 border-t bg-gray-50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-600">
+                  <div>
+                    <p className="font-medium text-gray-900 mb-1">Légende :</p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-green-50 rounded border"></div>
+                        <span>Jour travaillé (avec heures)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-orange-100 rounded border"></div>
+                        <span>Congé assistant maternel</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-blue-100 rounded border"></div>
+                        <span>Congé parent</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-gray-100 rounded border"></div>
+                        <span>Week-end</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-blue-200 rounded border-2 border-blue-500 relative">
+                          <div className="absolute top-0 right-0 w-1 h-1 bg-blue-500 rounded-full"></div>
+                        </div>
+                        <span>Jour sélectionné</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="font-medium text-gray-900 mb-1">Fonctionnalités :</p>
+                    <div className="ml-2 space-y-1 text-gray-600">
+                      <p>• <span className="bg-purple-100 px-2 py-1 rounded text-xs">☑️ Sélection multiple</span> : Saisir plusieurs jours ensemble</p>
+                      <p>• <span className="text-xs">📋</span> : Icône de duplication disponible</p>
+                      <p>• Auto-sauvegarde après chaque modification</p>
+                      <p>• Raccourci: {modifierKey}+S pour sauvegarder</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Panneau statistiques */}
+          {/* Sidebar avec statistiques */}
           <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Récap mensuel
-              </h3>
+            {/* Récapitulatif mensuel */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">📊 Récapitulatif</h3>
               
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Heures totales</span>
-                  <span className="font-medium">{stats.totalHeures.toFixed(1)}h</span>
+                  <span className="text-gray-600">Heures totales:</span>
+                  <span className="font-medium">{monthlyStats.totalHours.toFixed(1)}h</span>
+                </div>
+                
+                {monthlyStats.totalMajoredHours > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Dont majorées:</span>
+                    <span className="font-medium text-orange-600">{monthlyStats.totalMajoredHours.toFixed(1)}h</span>
+                  </div>
+                )}
+                
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Jours travaillés:</span>
+                  <span className="font-medium">{monthlyStats.workDays}</span>
                 </div>
                 
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Moyenne/jour</span>
-                  <span className="font-medium">{stats.moyenneHeuresJour.toFixed(1)}h</span>
+                  <span className="text-gray-600">Congés AM:</span>
+                  <span className="font-medium text-orange-600">{monthlyStats.congeDays}</span>
                 </div>
                 
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Jours travaillés</span>
-                  <span className="font-medium">{stats.joursTravailles}</span>
-                </div>
-                
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Jours de présence</span>
-                  <span className="font-medium">{stats.joursPresence}</span>
-                </div>
-                
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Congés AM</span>
-                  <span className="font-medium">{stats.joursCongesAssmat}</span>
-                </div>
-                
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Congés parent</span>
-                  <span className="font-medium">{stats.joursCongesParent}</span>
+                  <span className="text-gray-600">Congés parent:</span>
+                  <span className="font-medium text-blue-600">{monthlyStats.congeParentDays}</span>
                 </div>
                 
                 <hr className="my-3" />
                 
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Salaire horaire</span>
-                  <span className="font-medium">{stats.salaireHoraire.toFixed(2)} €</span>
+                  <span className="text-gray-600">Salaire brut:</span>
+                  <span className="font-medium">{monthlyStats.totalSalary.toFixed(2)}€</span>
                 </div>
                 
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Frais repas</span>
-                  <span className="font-medium">{(settings.fraisRepas * stats.joursPresence).toFixed(2)} € <span className="text-xs text-gray-500">({stats.joursPresence}j × {settings.fraisRepas}€)</span></span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Frais entretien</span>
-                  <span className="font-medium">{(settings.fraisEntretien * stats.joursPresence).toFixed(2)} € <span className="text-xs text-gray-500">({stats.joursPresence}j × {settings.fraisEntretien}€)</span></span>
+                  <span className="text-gray-600">Frais repas:</span>
+                  <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€</span>
                 </div>
                 
-                <div className="flex justify-between font-semibold text-lg border-t pt-3">
-                  <span>Total à payer</span>
-                  <span className="text-green-600">{stats.salaireTotal.toFixed(2)} €</span>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Frais entretien:</span>
+                  <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
+                </div>
+                
+                <hr className="my-3" />
+                
+                <div className="flex justify-between">
+                  <span className="font-semibold text-gray-900">Total:</span>
+                  <span className="font-bold text-green-600">{monthlyStats.totalWithFrais.toFixed(2)}€</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="text-lg font-semibold mb-4">Guide d'utilisation</h3>
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="font-medium text-gray-900 mb-1">Actions sur les jours :</p>
-                  <div className="ml-2 space-y-1 text-gray-600">
-                    <p>• <strong>Clic simple</strong> : Modifier/saisir les heures</p>
-                    <p>• <strong>Ctrl + Clic</strong> : Démarrer la sélection multiple</p>
-                    <p>• <strong>Shift + Clic</strong> : Dupliquer ce jour vers d'autres</p>
-                  </div>
+            {/* Paramètres rapides */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">⚙️ Paramètres actuels</h3>
+              
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Tarif horaire:</span>
+                  <span>{settings.tarifHoraire}€</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Seuil majoration:</span>
+                  <span>{settings.seuilMajoration}h</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Taux majoration:</span>
+                  <span>×{settings.tarifMajoration}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Frais repas:</span>
+                  <span>{settings.fraisRepas}€</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Frais entretien:</span>
+                  <span>{settings.fraisEntretien}€</span>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setShowSettings(true)}
+                className="w-full mt-4 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Modifier
+              </button>
+            </div>
+
+            {/* Sélection multiple */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">🎯 Sélection multiple</h3>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => setMultiSelectMode(!multiSelectMode)}
+                  className={`w-full px-3 py-2 text-sm rounded-md transition-colors ${
+                    multiSelectMode 
+                      ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {multiSelectMode ? '✅ Mode sélection activé' : '☑️ Activer sélection multiple'}
+                </button>
+                
+                {selectedDays.length > 0 && (
+                  <>
+                    <div className="text-sm text-gray-600">
+                      {selectedDays.length} jour{selectedDays.length > 1 ? 's' : ''} sélectionné{selectedDays.length > 1 ? 's' : ''}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={clearSelection}
+                        className="px-3 py-2 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                      >
+                        ✕ Annuler
+                      </button>
+                    </div>
+                  </>
+                )}
+                
+                <div className="text-xs text-gray-500 mt-2">
+                  💡 Astuce : Cliquez sur les jours pour les sélectionner, puis modifiez-les en groupe
+                </div>
+              </div>
+            </div>
+
+            {/* État de sauvegarde */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">💾 Sauvegarde</h3>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Auto-sauvegarde</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoSave}
+                      onChange={(e) => setAutoSave(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
                 </div>
                 
-                <div>
-                  <p className="font-medium text-gray-900 mb-1">Code couleurs :</p>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-green-100 rounded border"></div>
-                      <span>Jour travaillé (avec heures)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-orange-100 rounded border"></div>
-                      <span>Congé assistant maternel</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-blue-100 rounded border"></div>
-                      <span>Congé parent</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-gray-100 rounded border"></div>
-                      <span>Week-end</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-blue-200 rounded border-2 border-blue-500 relative">
-                        <div className="absolute top-0 right-0 w-1 h-1 bg-blue-500 rounded-full"></div>
-                      </div>
-                      <span>Jour sélectionné</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="font-medium text-gray-900 mb-1">Fonctionnalités :</p>
-                  <div className="ml-2 space-y-1 text-gray-600">
-                    <p>• <span className="bg-purple-100 px-2 py-1 rounded text-xs">☑️ Sélection multiple</span> : Saisir plusieurs jours ensemble</p>
-                    <p>• <span className="text-xs">📋</span> : Icône de duplication disponible</p>
-                    <p>• Auto-sauvegarde après chaque modification</p>
-                  </div>
+                {!autoSave && (
+                  <button
+                    onClick={manualSave}
+                    disabled={loading}
+                    className="w-full px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {loading ? 'Sauvegarde...' : 'Sauvegarder'}
+                  </button>
+                )}
+                
+                <div className="text-xs text-gray-500">
+                  {autoSave ? '✅ Sauvegarde automatique active' : '⚠️ Pensez à sauvegarder vos modifications'}
                 </div>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Modales */}
         <DayModal />
         <SettingsPanel />
         <AnnualView />
@@ -1523,8 +1426,4 @@ const AssistantMaternelTracker = () => {
   );
 };
 
-function App() {
-  return <AssistantMaternelTracker />;
-}
-
-export default App;
+export default AssistantMaternelTracker;

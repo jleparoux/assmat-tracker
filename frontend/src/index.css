@@ -26,7 +26,10 @@ code {
     monospace;
 }
 
-/* Styles personnalisés pour l'app */
+/* ============================================
+   STYLES CALENDRIER
+   ============================================ */
+
 .calendar-day {
   transition: all 0.2s ease-in-out;
 }
@@ -36,37 +39,7 @@ code {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-/* Animation de chargement */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-/* Prévention de la sélection de texte - Multi-navigateurs */
-.no-select,
-.user-select-none {
-  -webkit-user-select: none !important;  /* Safari/Chrome */
-  -moz-user-select: none !important;     /* Firefox */
-  -ms-user-select: none !important;      /* IE/Edge */
-  user-select: none !important;          /* Standard */
-  
-  /* Prévention du drag & drop */
-  -webkit-user-drag: none;
-  -khtml-user-drag: none;
-  -moz-user-drag: none;
-  -o-user-drag: none;
-  user-drag: none;
-  
-  /* Empêcher la sélection sur les éléments de texte */
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: rgba(0,0,0,0);
-}
-
-/* Classe spécifique pour le calendrier */
+/* Classe spécifique pour les cellules du calendrier */
 .calendar-cell {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
@@ -95,9 +68,156 @@ code {
   pointer-events: auto;
 }
 
-/* Scrollbar personnalisée */
+/* Empêcher la sélection globale lors des interactions Shift */
+.prevent-selection * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+/* ============================================
+   MENU ACTIONS DÉROULANT
+   ============================================ */
+
+.actions-menu {
+  /* Animation par défaut */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all 0.2s ease-out;
+}
+
+/* État visible du menu */
+.actions-menu.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* Ombre et style du menu */
+.actions-dropdown .actions-menu {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e5e7eb;
+}
+
+/* Éléments du menu */
+.actions-menu button,
+.actions-menu label {
+  transition: background-color 0.15s ease;
+  border-radius: 0;
+}
+
+.actions-menu button:first-child,
+.actions-menu label:first-child {
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.actions-menu button:last-child,
+.actions-menu label:last-child {
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+/* ============================================
+   MODALES AMÉLIORÉES
+   ============================================ */
+
+/* Overlay des modales */
+.modal-overlay {
+  backdrop-filter: blur(2px);
+}
+
+/* Animation d'apparition des modales */
+.modal-content {
+  animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Zone de contenu scrollable */
+.modal-scroll {
+  /* Style de scrollbar personnalisé */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.modal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.modal-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Boutons fixés en bas des modales */
+.modal-footer {
+  border-top: 1px solid #e5e7eb;
+  background: linear-gradient(to bottom, rgba(249, 250, 251, 0.8), #f9fafb);
+  backdrop-filter: blur(8px);
+}
+
+/* ============================================
+   ANIMATIONS ET TRANSITIONS
+   ============================================ */
+
+/* Animation de chargement */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Animation de pulsation pour les indicateurs */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Transition fluide pour les changements d'état */
+.smooth-transition {
+  transition: all 0.2s ease-in-out;
+}
+
+/* ============================================
+   SCROLLBARS PERSONNALISÉES
+   ============================================ */
+
+/* Scrollbar principale */
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -114,31 +234,182 @@ code {
   background: #a1a1a1;
 }
 
-/* Empêcher la sélection globale lors des interactions Shift */
-.prevent-selection * {
-  -webkit-user-select: none !important;
-  -moz-user-select: none !important;
-  -ms-user-select: none !important;
-  user-select: none !important;
+::-webkit-scrollbar-corner {
+  background: #f1f1f1;
 }
 
-/* Styles pour les tooltips améliorés */
-.calendar-tooltip {
-  position: relative;
+/* ============================================
+   AMÉLIORATIONS VISUELLES
+   ============================================ */
+
+/* Focus visible amélioré */
+.focus\:ring-2:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #3b82f6;
 }
 
-.calendar-tooltip:hover::before {
-  content: attr(data-tooltip);
+/* Ombres subtiles pour la profondeur */
+.card-shadow {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.card-shadow-lg {
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+/* Hover effects pour les boutons */
+.btn-hover {
+  transition: all 0.15s ease;
+}
+
+.btn-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================
+   INDICATEURS ET BADGES
+   ============================================ */
+
+/* Indicateurs de frais */
+.fee-indicator {
   position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  white-space: nowrap;
-  z-index: 1000;
-  pointer-events: none;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  gap: 2px;
+}
+
+.fee-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.fee-dot.meals {
+  background-color: #10b981;
+}
+
+.fee-dot.maintenance {
+  background-color: #3b82f6;
+}
+
+/* Badge de sélection */
+.selection-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  background-color: #3b82f6;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================
+   RESPONSIVE ET ACCESSIBILITÉ
+   ============================================ */
+
+/* Styles pour tablettes */
+@media (max-width: 768px) {
+  .calendar-cell {
+    min-height: 80px;
+  }
+  
+  .modal-content {
+    margin: 16px;
+    max-width: calc(100vw - 32px);
+  }
+  
+  .actions-menu {
+    right: 0;
+    left: auto;
+    min-width: 180px;
+  }
+}
+
+/* Styles pour mobiles */
+@media (max-width: 640px) {
+  .calendar-cell {
+    min-height: 60px;
+    padding: 4px;
+  }
+  
+  .calendar-cell .font-semibold {
+    font-size: 0.875rem;
+  }
+  
+  .calendar-cell .text-xs {
+    font-size: 0.625rem;
+  }
+  
+  .modal-content {
+    margin: 8px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+}
+
+/* Mode sombre (optionnel - préparation) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1f2937;
+    --bg-secondary: #111827;
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --border-color: #374151;
+  }
+  
+  /* Les classes Tailwind prendront le relais,
+     ces variables sont pour une future implémentation */
+}
+
+/* ============================================
+   PRINT STYLES (pour les exports PDF)
+   ============================================ */
+
+@media print {
+  .no-print,
+  .actions-dropdown,
+  .modal-overlay {
+    display: none !important;
+  }
+  
+  .calendar-cell {
+    break-inside: avoid;
+    border: 1px solid #000 !important;
+  }
+  
+  body {
+    background: white !important;
+  }
+}
+
+/* ============================================
+   UTILITAIRES SUPPLÉMENTAIRES
+   ============================================ */
+
+/* Classes utilitaires personnalisées */
+.text-shadow {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.backdrop-blur {
+  backdrop-filter: blur(4px);
+}
+
+.gradient-border {
+  border: 1px solid;
+  border-image: linear-gradient(45deg, #3b82f6, #8b5cf6) 1;
+}
+
+/* Animation de survol douce */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
