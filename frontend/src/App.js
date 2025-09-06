@@ -13,7 +13,7 @@ const App = () => {
     seuilMajoration: 9.0,
     fraisRepas: 30.0,
     fraisEntretien: 15.0,
-    joursMenualises: 22
+    joursMensualises: 22
   });
   
   // États UI
@@ -80,11 +80,18 @@ const App = () => {
     let congeDays = 0;
     let congeParentDays = 0;
 
+    let daysWithMeals = 0;
+    let daysWithMaintenance = 0;
+
     Object.values(dailyData).forEach(dayData => {
       if (dayData.status === 'conge-assmat') {
         congeDays++;
+        if (dayData.fraisRepas) daysWithMeals++;
+        if (dayData.fraisEntretien) daysWithMaintenance++;
       } else if (dayData.status === 'conge-parent') {
         congeParentDays++;
+        if (dayData.fraisRepas) daysWithMeals++;
+        if (dayData.fraisEntretien) daysWithMaintenance++;
       } else if (dayData.depot && dayData.reprise) {
         workDays++;
         const { normal, majore, total } = calculateDayHours(dayData);
@@ -92,11 +99,13 @@ const App = () => {
         totalMajoredHours += majore;
         totalHours += total;
         totalSalary += calculateDaySalary(dayData);
+        if (dayData.fraisRepas) daysWithMeals++;
+        if (dayData.fraisEntretien) daysWithMaintenance++;
       }
     });
 
-    const fraisRepasTotal = (workDays / settings.joursMenualises) * settings.fraisRepas;
-    const fraisEntretienTotal = (workDays / settings.joursMenualises) * settings.fraisEntretien;
+    const fraisRepasTotal = daysWithMeals * settings.fraisRepas;
+    const fraisEntretienTotal = daysWithMaintenance * settings.fraisEntretien;
 
     return {
       totalHours,
@@ -120,29 +129,37 @@ const App = () => {
     let totalCongeParentDays = 0;
     let totalFraisRepas = 0;
     let totalFraisEntretien = 0;
-    
+
     const monthlyDetails = monthsData.map(({ month, data }) => {
       let monthHours = 0;
       let monthSalary = 0;
       let monthWorkDays = 0;
       let monthCongeDays = 0;
       let monthCongeParentDays = 0;
+      let monthDaysWithMeals = 0;
+      let monthDaysWithMaintenance = 0;
 
       Object.values(data).forEach(dayData => {
         if (dayData.status === 'conge-assmat') {
           monthCongeDays++;
+          if (dayData.fraisRepas) monthDaysWithMeals++;
+          if (dayData.fraisEntretien) monthDaysWithMaintenance++;
         } else if (dayData.status === 'conge-parent') {
           monthCongeParentDays++;
+          if (dayData.fraisRepas) monthDaysWithMeals++;
+          if (dayData.fraisEntretien) monthDaysWithMaintenance++;
         } else if (dayData.depot && dayData.reprise) {
           monthWorkDays++;
           const { total } = calculateDayHours(dayData);
           monthHours += total;
           monthSalary += calculateDaySalary(dayData);
+          if (dayData.fraisRepas) monthDaysWithMeals++;
+          if (dayData.fraisEntretien) monthDaysWithMaintenance++;
         }
       });
 
-      const monthFraisRepas = (monthWorkDays / settings.joursMenualises) * settings.fraisRepas;
-      const monthFraisEntretien = (monthWorkDays / settings.joursMenualises) * settings.fraisEntretien;
+      const monthFraisRepas = monthDaysWithMeals * settings.fraisRepas;
+      const monthFraisEntretien = monthDaysWithMaintenance * settings.fraisEntretien;
 
       totalHours += monthHours;
       totalSalary += monthSalary;
@@ -164,7 +181,7 @@ const App = () => {
         fraisEntretien: monthFraisEntretien,
         total: monthSalary + monthFraisRepas + monthFraisEntretien
       };
-    });
+    }); 
 
     return {
       year,
@@ -446,7 +463,14 @@ const App = () => {
     loadSettings();
   }, []);
 
+  useEffect(() => {
+    console.log('📅 Changement de mois détecté:', currentDate);
+    loadMonthData(currentDate);
+  }, [currentDate]);
+
   const monthlyStats = calculateMonthlyStats();
+  console.log('📊 dailyData utilisé pour stats:', Object.keys(dailyData).length, 'jours');
+  console.log('📅 Mois affiché:', currentDate.toLocaleDateString('fr-FR', { month: 'long' }));
 
   useEffect(() => {
       if (showAnnualView) {
@@ -761,6 +785,11 @@ const App = () => {
         if (selectedDay && !selectedDays.length) {
           const dayKey = formatDate(selectedDay);
           const dayData = dailyData[dayKey] || {};
+
+          console.log('🔧 Ouverture modal pour:', dayKey);
+          console.log('📊 Données du jour:', dayData);
+          console.log('📝 Status détecté:', dayData.status);
+          
           setDepot(dayData.depot || '');
           setReprise(dayData.reprise || '');
           setStatus(dayData.status || 'travail');
@@ -774,7 +803,7 @@ const App = () => {
           setFraisEntretien(false);
         }
       }
-    }, [showDayModal, selectedDay, selectedDays]);
+    }, [showDayModal, selectedDay, selectedDays, dailyData]);
 
     if (!showDayModal) return null;
 
@@ -1255,8 +1284,8 @@ const App = () => {
               </label>
               <input
                 type="number"
-                value={tempSettings.joursMenualises}
-                onChange={(e) => setTempSettings(prev => ({ ...prev, joursMenualises: parseInt(e.target.value) || 0 }))}
+                value={tempSettings.joursMensualises}
+                onChange={(e) => setTempSettings(prev => ({ ...prev, joursMensualises: parseInt(e.target.value) || 0 }))}
                 className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -1453,7 +1482,7 @@ const App = () => {
           <div className="space-y-6">
             {/* Récapitulatif mensuel */}
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-semibold text-gray-900 mb-4">📊 Récapitulatif</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">📊 Récapitulatif {currentDate.toLocaleDateString('fr-FR', { month: 'long' })}</h3>
               
               <div className="space-y-3">
                 <div className="flex justify-between">
