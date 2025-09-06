@@ -83,105 +83,22 @@ code {
 .actions-menu {
   /* Animation par défaut */
   opacity: 0;
-  visibility: hidden;
   transform: translateY(-10px);
-  transition: all 0.2s ease-out;
+  transition: all 0.2s ease-in-out;
+  pointer-events: none;
 }
 
-/* État visible du menu */
-.actions-menu.visible {
+.actions-menu.show {
   opacity: 1;
-  visibility: visible;
   transform: translateY(0);
-}
-
-/* Ombre et style du menu */
-.actions-dropdown .actions-menu {
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-  border: 1px solid #e5e7eb;
-}
-
-/* Éléments du menu */
-.actions-menu button,
-.actions-menu label {
-  transition: background-color 0.15s ease;
-  border-radius: 0;
-}
-
-.actions-menu button:first-child,
-.actions-menu label:first-child {
-  border-top-left-radius: 0.5rem;
-  border-top-right-radius: 0.5rem;
-}
-
-.actions-menu button:last-child,
-.actions-menu label:last-child {
-  border-bottom-left-radius: 0.5rem;
-  border-bottom-right-radius: 0.5rem;
+  pointer-events: auto;
 }
 
 /* ============================================
-   MODALES AMÉLIORÉES
+   ANIMATIONS
    ============================================ */
 
-/* Overlay des modales */
-.modal-overlay {
-  backdrop-filter: blur(2px);
-}
-
-/* Animation d'apparition des modales */
-.modal-content {
-  animation: modalSlideIn 0.2s ease-out;
-}
-
-@keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-/* Zone de contenu scrollable */
-.modal-scroll {
-  /* Style de scrollbar personnalisé */
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f1f5f9;
-}
-
-.modal-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.modal-scroll::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 3px;
-}
-
-.modal-scroll::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.modal-scroll::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Boutons fixés en bas des modales */
-.modal-footer {
-  border-top: 1px solid #e5e7eb;
-  background: linear-gradient(to bottom, rgba(249, 250, 251, 0.8), #f9fafb);
-  backdrop-filter: blur(8px);
-}
-
-/* ============================================
-   ANIMATIONS ET TRANSITIONS
-   ============================================ */
-
-/* Animation de chargement */
+/* Animation de rotation pour les icônes de chargement */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -278,6 +195,7 @@ code {
   left: 4px;
   display: flex;
   gap: 2px;
+  z-index: 2;
 }
 
 .fee-dot {
@@ -288,11 +206,11 @@ code {
 }
 
 .fee-dot.meals {
-  background-color: #10b981;
+  background-color: #10b981; /* Vert pour les repas */
 }
 
 .fee-dot.maintenance {
-  background-color: #3b82f6;
+  background-color: #3b82f6; /* Bleu pour l'entretien */
 }
 
 /* Badge de sélection */
@@ -302,114 +220,464 @@ code {
   right: 4px;
   width: 8px;
   height: 8px;
-  background-color: #3b82f6;
+  background-color: #8b5cf6; /* Violet pour la sélection */
   border-radius: 50%;
+  border: 1px solid white;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  z-index: 2;
 }
 
 /* ============================================
-   RESPONSIVE ET ACCESSIBILITÉ
+   ÉTATS DE SÉLECTION MULTIPLE
    ============================================ */
 
-/* Styles pour tablettes */
-@media (max-width: 768px) {
-  .calendar-cell {
-    min-height: 80px;
+/* Mode sélection multiple actif */
+.multi-select-mode .calendar-cell {
+  cursor: pointer;
+}
+
+.multi-select-mode .calendar-cell:hover {
+  background-color: rgba(139, 92, 246, 0.1) !important;
+  border-color: #8b5cf6 !important;
+}
+
+/* Cellule sélectionnée */
+.calendar-cell.selected {
+  background-color: rgba(139, 92, 246, 0.1) !important;
+  border-color: #8b5cf6 !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2) !important;
+}
+
+/* Animation pour la sélection */
+.calendar-cell.selected::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 40%, rgba(139, 92, 246, 0.1) 50%, transparent 60%);
+  animation: selection-sweep 0.3s ease-out;
+  pointer-events: none;
+}
+
+@keyframes selection-sweep {
+  0% {
+    transform: translateX(-100%);
   }
-  
-  .modal-content {
-    margin: 16px;
-    max-width: calc(100vw - 32px);
-  }
-  
-  .actions-menu {
-    right: 0;
-    left: auto;
-    min-width: 180px;
+  100% {
+    transform: translateX(100%);
   }
 }
 
-/* Styles pour mobiles */
+/* ============================================
+   BOUTONS D'ACTION SUR LES CELLULES
+   ============================================ */
+
+/* Bouton de duplication */
+.duplicate-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+  padding: 2px;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.calendar-cell:hover .duplicate-btn {
+  opacity: 1;
+}
+
+.duplicate-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+/* Bouton de suppression (visible en mode sélection) */
+.delete-btn {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 3px;
+  padding: 2px;
+  font-size: 10px;
+  line-height: 1;
+  color: #ef4444;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.multi-select-mode .calendar-cell:hover .delete-btn {
+  opacity: 1;
+}
+
+/* ============================================
+   TYPES DE JOURNÉES - AMÉLIORÉ
+   ============================================ */
+
+/* Journée de travail */
+.calendar-cell.work-day {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(22, 163, 74, 0.05) 100%);
+  border-left: 4px solid #22c55e;
+}
+
+/* Congé assistant maternel */
+.calendar-cell.conge-assmat {
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, rgba(234, 88, 12, 0.05) 100%);
+  border-left: 4px solid #f97316;
+}
+
+/* Congé parent */
+.calendar-cell.conge-parent {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.05) 100%);
+  border-left: 4px solid #3b82f6;
+}
+
+/* Jour avec heures majorées */
+.calendar-cell.majored-hours {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, rgba(249, 115, 22, 0.05) 100%);
+  border-left: 4px solid;
+  border-image: linear-gradient(45deg, #22c55e, #f97316) 1;
+}
+
+/* Styles pour les textes dans les cellules */
+.calendar-cell .status-text {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+
+.calendar-cell .time-range {
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.calendar-cell .hours-total {
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+/* ============================================
+   MODALS ET OVERLAYS
+   ============================================ */
+
+/* Overlay des modals */
+.modal-overlay {
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Contenu des modals */
+.modal-content {
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   BARRES D'OUTILS
+   ============================================ */
+
+/* Barre d'outils de sélection multiple */
+.selection-toolbar {
+  background: linear-gradient(135deg, #ddd6fe 0%, #e0e7ff 100%);
+  border-bottom: 1px solid #c4b5fd;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Barre d'instructions */
+.instruction-bar {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-bottom: 1px solid #f59e0b;
+}
+
+/* ============================================
+   CASES À COCHER PERSONNALISÉES
+   ============================================ */
+
+/* Style pour les cases à cocher de frais */
+.fee-checkbox {
+  position: relative;
+}
+
+.fee-checkbox input[type="checkbox"] {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.fee-checkbox input[type="checkbox"]:checked {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.fee-checkbox input[type="checkbox"]:checked::before {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.fee-checkbox.meals input[type="checkbox"]:checked {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.fee-checkbox.maintenance input[type="checkbox"]:checked {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+/* ============================================
+   BOUTONS AMÉLIORÉS
+   ============================================ */
+
+/* Bouton principal */
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Bouton secondaire */
+.btn-secondary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+/* Bouton danger */
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* ============================================
+   STATISTIQUES ET CARTES
+   ============================================ */
+
+/* Cartes des statistiques */
+.stat-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  border-color: #cbd5e1;
+}
+
+/* Valeurs numériques importantes */
+.stat-value {
+  font-weight: 600;
+  font-size: 1.125rem;
+}
+
+.stat-value.positive {
+  color: #059669;
+}
+
+.stat-value.negative {
+  color: #dc2626;
+}
+
+.stat-value.neutral {
+  color: #6b7280;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+/* Tablettes */
+@media (max-width: 1024px) {
+  .calendar-cell {
+    height: 80px;
+    font-size: 14px;
+  }
+  
+  .fee-indicator {
+    top: 2px;
+    left: 2px;
+  }
+  
+  .fee-dot {
+    width: 6px;
+    height: 6px;
+  }
+}
+
+/* Mobiles */
 @media (max-width: 640px) {
   .calendar-cell {
-    min-height: 60px;
+    height: 60px;
+    font-size: 12px;
     padding: 4px;
   }
   
-  .calendar-cell .font-semibold {
-    font-size: 0.875rem;
+  .duplicate-btn {
+    font-size: 8px;
   }
   
-  .calendar-cell .text-xs {
-    font-size: 0.625rem;
+  .fee-indicator {
+    top: 1px;
+    left: 1px;
   }
   
-  .modal-content {
-    margin: 8px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 16px);
-  }
-}
-
-/* Mode sombre (optionnel - préparation) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-primary: #1f2937;
-    --bg-secondary: #111827;
-    --text-primary: #f9fafb;
-    --text-secondary: #d1d5db;
-    --border-color: #374151;
+  .fee-dot {
+    width: 4px;
+    height: 4px;
   }
   
-  /* Les classes Tailwind prendront le relais,
-     ces variables sont pour une future implémentation */
+  .selection-badge {
+    width: 6px;
+    height: 6px;
+    top: 2px;
+    right: 2px;
+  }
 }
 
 /* ============================================
-   PRINT STYLES (pour les exports PDF)
+   UTILITAIRES
    ============================================ */
 
-@media print {
-  .no-print,
-  .actions-dropdown,
-  .modal-overlay {
-    display: none !important;
+/* Classe pour masquer des éléments visuellement mais les garder accessibles */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Classe pour le mode sombre (préparation future) */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #111827;
+    color: #f9fafb;
   }
   
   .calendar-cell {
-    break-inside: avoid;
-    border: 1px solid #000 !important;
+    border-color: #374151;
+    background-color: #1f2937;
   }
   
-  body {
-    background: white !important;
+  .modal-content {
+    background-color: #1f2937;
+    color: #f9fafb;
   }
 }
 
-/* ============================================
-   UTILITAIRES SUPPLÉMENTAIRES
-   ============================================ */
-
-/* Classes utilitaires personnalisées */
-.text-shadow {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+/* Classe d'animation pour les changements */
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
 }
 
-.backdrop-blur {
-  backdrop-filter: blur(4px);
+.slide-up {
+  animation: slideUp 0.3s ease-out;
 }
 
-.gradient-border {
-  border: 1px solid;
-  border-image: linear-gradient(45deg, #3b82f6, #8b5cf6) 1;
-}
-
-/* Animation de survol douce */
-.hover-lift {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+.slide-down {
+  animation: slideDown 0.3s ease-out;
 }

@@ -45,8 +45,10 @@ app.get('/api/data/:month', async (req, res) => {
     
     const data = await fs.readFile(filePath, 'utf-8');
     const parsedData = JSON.parse(data);
-    
-    console.log(`📖 Lecture des données: ${month}`);
+
+    console.log(`📖 Données chargées pour ${month}:`, parsedData);
+
+    // console.log(`📖 Lecture des données: ${month}`);
     res.json(parsedData);
   } catch (error) {
     if (error.code === 'ENOENT') {
@@ -65,15 +67,23 @@ app.post('/api/data/:month', async (req, res) => {
   try {
     const { month } = req.params;
     const { dailyData } = req.body;
+
+    // debug log
+    console.log('📥 POST reçu pour mois:', month);
+    console.log('📦 Body reçu:', req.body);
+    console.log('📊 dailyData extraite:', dailyData);
+    console.log('📊 Type dailyData:', typeof dailyData);
     
     // Validation du format mois
     if (!/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
+        console.log('❌ Format mois invalide');
+        return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
     }
     
     // Validation des données
     if (!dailyData || typeof dailyData !== 'object') {
-      return res.status(400).json({ error: 'Données dailyData manquantes ou invalides' });
+        console.log('❌ Données dailyData invalides');
+        return res.status(400).json({ error: 'Données dailyData manquantes ou invalides' });
     }
     
     const filePath = path.join(DATA_DIR, `${month}.json`);
