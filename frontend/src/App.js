@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Settings, Save, RefreshCw, Calendar, BarChart3, Plus, X, Copy, Trash2, Upload, Download } from 'lucide-react';
+import { formatDate, calculateDayHours, calculateMonthlyStats, calculateAnnualStats, getDaysInMonth, isWeekend, formatTimeRangeFrench } from './utils';
 
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3001';
 
@@ -41,168 +42,6 @@ const App = () => {
   // Détection OS pour les raccourcis
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const modifierKey = isMac ? 'Cmd' : 'Ctrl';
-
-  // Utilitaires
-  const parseTimeToMinutes = (timeStr) => {
-    if (!timeStr) return 0;
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + (minutes || 0);
-  };
-
-  const calculateDayHours = (dayData) => {
-    if (!dayData.depot || !dayData.reprise) {
-      return { normal: 0, majore: 0, total: 0 };
-    }
-
-    const depotMinutes = parseTimeToMinutes(dayData.depot);
-    const repriseMinutes = parseTimeToMinutes(dayData.reprise);
-    const totalMinutes = repriseMinutes - depotMinutes;
-    const totalHours = totalMinutes / 60;
-
-    if (totalHours <= settings.seuilMajoration) {
-      return { normal: totalHours, majore: 0, total: totalHours };
-    } else {
-      const normalHours = settings.seuilMajoration;
-      const majoredHours = totalHours - settings.seuilMajoration;
-      return { normal: normalHours, majore: majoredHours, total: totalHours };
-    }
-  };
-
-  const calculateDaySalary = (dayData) => {
-    const { normal, majore } = calculateDayHours(dayData);
-    const normalSalary = normal * settings.tarifHoraire;
-    const majoredSalary = majore * settings.tarifHoraire * settings.tarifMajoration;
-    return normalSalary + majoredSalary;
-  };
-
-  const calculateMonthlyStats = () => {
-    let totalHours = 0;
-    let totalNormalHours = 0;
-    let totalMajoredHours = 0;
-    let totalSalary = 0;
-    let workDays = 0;
-    let congeDays = 0;
-    let congeParentDays = 0;
-
-    let daysWithMeals = 0;
-    let daysWithMaintenance = 0;
-
-    Object.values(dailyData).forEach(dayData => {
-      if (dayData.status === 'conge-assmat') {
-        congeDays++;
-        if (dayData.fraisRepas) daysWithMeals++;
-        if (dayData.fraisEntretien) daysWithMaintenance++;
-      } else if (dayData.status === 'conge-parent') {
-        congeParentDays++;
-        if (dayData.fraisRepas) daysWithMeals++;
-        if (dayData.fraisEntretien) daysWithMaintenance++;
-      } else if (dayData.depot && dayData.reprise) {
-        workDays++;
-        const { normal, majore, total } = calculateDayHours(dayData);
-        totalNormalHours += normal;
-        totalMajoredHours += majore;
-        totalHours += total;
-        totalSalary += calculateDaySalary(dayData);
-        if (dayData.fraisRepas) daysWithMeals++;
-        if (dayData.fraisEntretien) daysWithMaintenance++;
-      }
-    });
-
-    const fraisRepasTotal = daysWithMeals * settings.fraisRepas;
-    const fraisEntretienTotal = daysWithMaintenance * settings.fraisEntretien;
-
-    return {
-      totalHours,
-      meanHoursPerDays: workDays > 0 ? totalHours / workDays : 0,
-      totalNormalHours,
-      totalMajoredHours,
-      totalSalary,
-      workDays,
-      congeDays,
-      congeParentDays,
-      fraisRepasTotal,
-      fraisEntretienTotal,
-      totalWithFrais: totalSalary + fraisRepasTotal + fraisEntretienTotal
-    };
-  };
-
-  const calculateAnnualStats = (monthsData, year) => {
-    let totalHours = 0;
-    let totalSalary = 0;
-    let totalWorkDays = 0;
-    let totalCongeDays = 0;
-    let totalCongeParentDays = 0;
-    let totalFraisRepas = 0;
-    let totalFraisEntretien = 0;
-
-    const monthlyDetails = monthsData.map(({ month, data }) => {
-      let monthHours = 0;
-      let monthSalary = 0;
-      let monthWorkDays = 0;
-      let monthCongeDays = 0;
-      let monthCongeParentDays = 0;
-      let monthDaysWithMeals = 0;
-      let monthDaysWithMaintenance = 0;
-
-      Object.values(data).forEach(dayData => {
-        if (dayData.status === 'conge-assmat') {
-          monthCongeDays++;
-          if (dayData.fraisRepas) monthDaysWithMeals++;
-          if (dayData.fraisEntretien) monthDaysWithMaintenance++;
-        } else if (dayData.status === 'conge-parent') {
-          monthCongeParentDays++;
-          if (dayData.fraisRepas) monthDaysWithMeals++;
-          if (dayData.fraisEntretien) monthDaysWithMaintenance++;
-        } else if (dayData.depot && dayData.reprise) {
-          monthWorkDays++;
-          const { total } = calculateDayHours(dayData);
-          monthHours += total;
-          monthSalary += calculateDaySalary(dayData);
-          if (dayData.fraisRepas) monthDaysWithMeals++;
-          if (dayData.fraisEntretien) monthDaysWithMaintenance++;
-        }
-      });
-
-      const monthFraisRepas = monthDaysWithMeals * settings.fraisRepas;
-      const monthFraisEntretien = monthDaysWithMaintenance * settings.fraisEntretien;
-
-      totalHours += monthHours;
-      totalSalary += monthSalary;
-      totalWorkDays += monthWorkDays;
-      totalCongeDays += monthCongeDays;
-      totalCongeParentDays += monthCongeParentDays;
-      totalFraisRepas += monthFraisRepas;
-      totalFraisEntretien += monthFraisEntretien;
-
-      return {
-        month,
-        monthName: new Date(year, month - 1).toLocaleDateString('fr-FR', { month: 'long' }),
-        hours: monthHours,
-        salary: monthSalary,
-        workDays: monthWorkDays,
-        congeDays: monthCongeDays,
-        congeParentDays: monthCongeParentDays,
-        fraisRepas: monthFraisRepas,
-        fraisEntretien: monthFraisEntretien,
-        total: monthSalary + monthFraisRepas + monthFraisEntretien
-      };
-    }); 
-
-    return {
-      year,
-      totalHours: Math.round(totalHours * 100) / 100,
-      totalSalary: Math.round(totalSalary * 100) / 100,
-      totalWorkDays,
-      totalCongeDays,
-      totalCongeParentDays,
-      totalFraisRepas: Math.round(totalFraisRepas * 100) / 100,
-      totalFraisEntretien: Math.round(totalFraisEntretien * 100) / 100,
-      grandTotal: Math.round((totalSalary + totalFraisRepas + totalFraisEntretien) * 100) / 100,
-      monthlyDetails,
-      averageHoursPerMonth: Math.round((totalHours / 12) * 100) / 100,
-      averageSalaryPerMonth: Math.round((totalSalary / 12) * 100) / 100
-    };
-  };
 
   // get holidays
   const loadHolidays = async (year) => {
@@ -354,7 +193,7 @@ const App = () => {
       }
       
       // Calculer les statistiques annuelles
-      const stats = calculateAnnualStats(months, year);
+      const stats = calculateAnnualStats(months, year, settings);
       setAnnualStats(stats);
     } catch (error) {
       console.error('Erreur chargement données annuelles:', error);
@@ -532,7 +371,7 @@ const App = () => {
     loadHolidays(currentDate.getFullYear());
   }, [currentDate]);
 
-  const monthlyStats = calculateMonthlyStats();
+  const monthlyStats = calculateMonthlyStats(dailyData, settings);
   console.log('📊 dailyData utilisé pour stats:', Object.keys(dailyData).length, 'jours');
   console.log('📅 Mois affiché:', currentDate.toLocaleDateString('fr-FR', { month: 'long' }));
 
@@ -547,37 +386,6 @@ const App = () => {
         setSelectedYear(currentDate.getFullYear());
       }
     }, [showAnnualView]);
-  
-    // Utilitaires
-    const getDaysInMonth = (date) => {
-      const year = date.getFullYear();
-      const month = date.getMonth();
-      const firstDay = new Date(year, month, 1);
-      const lastDay = new Date(year, month + 1, 0);
-      const daysInMonth = lastDay.getDate();
-      const startWeekday = firstDay.getDay();
-      
-      return { daysInMonth, startWeekday, year, month };
-    };
-  
-    const formatDate = (date) => {
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    };
-  
-    const formatTimeFrench = (time) => {
-      if (!time) return '';
-      return time.replace(':', 'h');
-    };
-  
-    const formatTimeRangeFrench = (start, end) => {
-      if (!start || !end) return '';
-      return `${formatTimeFrench(start)} - ${formatTimeFrench(end)}`;
-    };
-  
-    const isWeekend = (date) => {
-      const day = date.getDay();
-      return day === 0 || day === 6;
-    };
 
     const isDateSelected = (date) => {
       const dateKey = formatDate(date);
@@ -740,7 +548,7 @@ const App = () => {
       // const isSelected = selectedDays.includes(dateKey);
       const isHolidayDay = isHoliday(date);
       const holidayName = getHolidayName(date);
-      const { total } = calculateDayHours(dayData);
+      const { total } = calculateDayHours(dayData, settings);
       
       let statusText = '';
       let statusColor = '';
@@ -1027,7 +835,7 @@ const App = () => {
                     <div className="text-sm font-medium">
                       {formatTimeRangeFrench(depot, reprise)} 
                       {' - '}
-                      {calculateDayHours({ depot, reprise }).total.toFixed(1)}h
+                      {calculateDayHours({ depot, reprise }, settings).total.toFixed(1)}h
                     </div>
                   </div>
                 )}
@@ -1235,7 +1043,7 @@ const App = () => {
                 {formatTimeRangeFrench(duplicateSource.depot, duplicateSource.reprise)}
               </div>
               <div className="text-sm text-gray-700">
-                Durée : {calculateDayHours(duplicateSource).total.toFixed(1)}h
+                Durée : {calculateDayHours(duplicateSource, settings).total.toFixed(1)}h
               </div>
               {(duplicateSource.fraisRepas || duplicateSource.fraisEntretien) && (
                 <div className="text-sm text-gray-700 mt-1">
