@@ -5,7 +5,10 @@ const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3001';
 
 const App = () => {
   // États de base
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [dailyData, setDailyData] = useState({});
   const [settings, setSettings] = useState({
     tarifHoraire: 4.50,
@@ -27,6 +30,7 @@ const App = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [annualStats, setAnnualStats] = useState(null);
   const [loadingAnnual, setLoadingAnnual] = useState(false);
+  const [holidays, setHolidays] = useState({});
   
   // États sélection multiple
   const [multiSelectMode, setMultiSelectMode] = useState(false);
@@ -198,6 +202,64 @@ const App = () => {
       averageHoursPerMonth: Math.round((totalHours / 12) * 100) / 100,
       averageSalaryPerMonth: Math.round((totalSalary / 12) * 100) / 100
     };
+  };
+
+  // get holidays
+  const loadHolidays = async (year) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/holidays/${year}`);
+      if (response.ok) {
+        const holidaysData = await response.json();
+        setHolidays(holidaysData);
+        return holidaysData;
+      }
+    } catch (error) {
+      console.error('Erreur chargement jours fériés:', error);
+    }
+    return {};
+  };
+
+  // Fonction pour vérifier si une date est fériée
+  const isHoliday = (date) => {
+    if (!holidays || typeof holidays !== 'object') return false;
+    const dateKey = formatDate(date);
+    return holidays[dateKey] !== undefined;
+  };
+
+  // Fonction pour obtenir le nom du jour férié
+  const getHolidayName = (date) => {
+    if (!holidays || typeof holidays !== 'object') return null;
+    const dateKey = formatDate(date);
+    return holidays[dateKey] || null;
+  };
+
+  const updateHolidaysStatus = async (monthData, holidays) => {
+    if (!holidays || typeof holidays !== 'object') return monthData;
+    
+    const updatedData = { ...monthData };
+    let hasChanges = false;
+    
+    Object.keys(holidays).forEach(dateKey => {
+      // Vérifier si la date est dans le mois courant
+      const [year, month] = dateKey.split('-');
+      const currentMonthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+      const dataMonthKey = `${year}-${month}`;
+      
+      if (dataMonthKey === currentMonthKey) {
+        // Si le jour existe dans les données mais n'est pas marqué comme férié
+        if (updatedData[dateKey] && updatedData[dateKey].status !== 'ferie') {
+          updatedData[dateKey] = { ...updatedData[dateKey], status: 'ferie' };
+          hasChanges = true;
+        }
+        // Si le jour n'existe pas dans les données, le créer comme jour férié
+        else if (!updatedData[dateKey]) {
+          updatedData[dateKey] = { status: 'ferie' };
+          hasChanges = true;
+        }
+      }
+    });
+    
+    return hasChanges ? updatedData : monthData;
   };
 
   // API calls
@@ -467,6 +529,7 @@ const App = () => {
   useEffect(() => {
     console.log('📅 Changement de mois détecté:', currentDate);
     loadMonthData(currentDate);
+    loadHolidays(currentDate.getFullYear());
   }, [currentDate]);
 
   const monthlyStats = calculateMonthlyStats();
@@ -675,6 +738,8 @@ const App = () => {
       const isWeekendDay = isWeekend(date);
       const isSelected = isDateSelected(date);
       // const isSelected = selectedDays.includes(dateKey);
+      const isHolidayDay = isHoliday(date);
+      const holidayName = getHolidayName(date);
       const { total } = calculateDayHours(dayData);
       
       let statusText = '';
@@ -684,6 +749,9 @@ const App = () => {
       if (isWeekendDay) {
         cellClasses = 'bg-gray-100';
         statusColor = 'text-gray-400';
+      } else if (isHolidayDay) {
+        cellClasses = 'bg-red-50 border-red-200';
+        statusColor = 'text-red-400';
       } else if (dayData.status === 'conge-assmat') {
         statusText = 'Congé AM';
         statusColor = 'text-orange-700';
@@ -710,6 +778,17 @@ const App = () => {
             ${cellClasses}
           `}
         >
+          {/* <div className="flex justify-between items-start">
+            <span className={`text-sm font-medium ${isHolidayDay ? 'text-red-700' : 'text-gray-900'}`}>
+              {i}
+            </span>
+            {isHolidayDay && (
+              <span className="text-xs text-red-600" title={holidayName}>
+                🎉
+              </span>
+            )}
+          </div> */}          
+
           {/* En-tête avec numéro du jour et indicateurs */}
           <div className="flex justify-between items-start w-full mb-1">
             <span className={`text-sm font-medium ${isToday ? 'text-blue-800' : statusColor || ''}`}>
@@ -752,6 +831,12 @@ const App = () => {
             {statusText && (
               <div className={`text-xs font-semibold ${statusColor} text-center`}>
                 {statusText}
+              </div>
+            )}
+
+            {isHolidayDay && (
+              <div className={`text-xs font-semibold ${statusColor} text-center`}>
+                {holidayName}
               </div>
             )}
             
@@ -877,6 +962,7 @@ const App = () => {
                 <option value="travail">Journée de travail</option>
                 <option value="conge-assmat">Congé assistant maternel</option>
                 <option value="conge-parent">Congé parent</option>
+                <option value="ferie">Jour férié</option>
               </select>
             </div>
 

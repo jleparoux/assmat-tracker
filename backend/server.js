@@ -408,6 +408,75 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// API: Récupérer les jours fériés d'une année
+app.get('/api/holidays/:year', async (req, res) => {
+  try {
+    const { year } = req.params;
+    
+    // Validation de l'année
+    if (!/^\d{4}$/.test(year) || year < 2020 || year > 2030) {
+      return res.status(400).json({ error: 'Année invalide (2020-2030)' });
+    }
+    
+    // Vérifier le cache local
+    const cacheFile = path.join(DATA_DIR, `holidays-${year}.json`);
+    
+    try {
+      const cached = await fs.readFile(cacheFile, 'utf-8');
+      const cachedData = JSON.parse(cached);
+      
+      // Vérifier si le cache n'est pas trop ancien (30 jours)
+      const cacheAge = Date.now() - new Date(cachedData.cachedAt).getTime();
+      if (cacheAge < 30 * 24 * 60 * 60 * 1000) {
+        console.log(`🎉 Jours fériés ${year} (cache)`);
+        return res.json(cachedData.holidays);
+      }
+    } catch (error) {
+      // Cache n'existe pas ou invalide, on continue
+    }
+    
+    // Récupérer depuis l'API gouvernementale
+    const fetch = require('node-fetch');
+    const apiUrl = `https://calendrier.api.gouv.fr/jours-feries/metropole/${year}.json`;
+    
+    const apiResponse = await fetch(apiUrl);
+    if (!apiResponse.ok) {
+      throw new Error(`Erreur API: ${apiResponse.status}`);
+    }
+    
+    const holidays = await apiResponse.json();
+    
+    // Sauvegarder dans le cache
+    const cacheData = {
+      holidays,
+      year: parseInt(year),
+      cachedAt: new Date().toISOString()
+    };
+    
+    await fs.writeFile(cacheFile, JSON.stringify(cacheData, null, 2), 'utf-8');
+    
+    console.log(`🎉 Jours fériés ${year} récupérés`);
+    res.json(holidays);
+    
+  } catch (error) {
+    console.error('❌ Erreur jours fériés:', error.message);
+    
+    // Fallback avec jours fériés fixes si l'API échoue
+    const fallbackHolidays = {
+      [`${req.params.year}-01-01`]: "Jour de l'An",
+      [`${req.params.year}-05-01`]: "Fête du Travail", 
+      [`${req.params.year}-05-08`]: "Fête de la Victoire",
+      [`${req.params.year}-07-14`]: "Fête Nationale",
+      [`${req.params.year}-08-15`]: "Assomption",
+      [`${req.params.year}-11-01`]: "Toussaint",
+      [`${req.params.year}-11-11`]: "Armistice",
+      [`${req.params.year}-12-25`]: "Noël"
+    };
+    
+    res.json(fallbackHolidays);
+  }
+});
+
 // ================================================
 // FRONTEND (Production seulement)
 // ================================================
