@@ -109,6 +109,7 @@ const App = () => {
 
     return {
       totalHours,
+      meanHoursPerDays: workDays > 0 ? totalHours / workDays : 0,
       totalNormalHours,
       totalMajoredHours,
       totalSalary,
@@ -1496,6 +1497,11 @@ const App = () => {
                     <span className="font-medium text-orange-600">{monthlyStats.totalMajoredHours.toFixed(1)}h</span>
                   </div>
                 )}
+
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Moyenne/jour</span>
+                  <span className="font-medium">{monthlyStats.meanHoursPerDays.toFixed(1)}h</span>
+                </div>
                 
                 <div className="flex justify-between">
                   <span className="text-gray-600">Jours travaillés:</span>
