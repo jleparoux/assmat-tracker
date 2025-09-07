@@ -883,12 +883,12 @@ const App = () => {
                 
                 <div className="flex justify-between">
                   <span className="text-gray-600">Frais repas:</span>
-                  <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€ <span className="text-xs text-gray-500">({monthlyStats.workDays}j × {settings.fraisRepas}€)</span></span>
+                  <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€ <span className="text-xs text-gray-500">({monthlyStats.daysWithMeals}j × {settings.fraisRepas}€)</span></span>
                 </div>
                 
                 <div className="flex justify-between">
                   <span className="text-gray-600">Frais entretien:</span>
-                  <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€ <span className="text-xs text-gray-500">({monthlyStats.workDays}j × {settings.fraisEntretien}€)</span></span>
+                  <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€ <span className="text-xs text-gray-500">({monthlyStats.daysWithMaintenance}j × {settings.fraisEntretien}€)</span></span>
                 </div>
                 
                 <hr className="my-3" />

@@ -112,6 +112,8 @@ export const calculateMonthlyStats = (dailyData, settings) => {
     totalMajoredHours,
     totalSalary,
     workDays,
+    daysWithMeals,
+    daysWithMaintenance,
     congeDays,
     congeParentDays,
     fraisRepasTotal,
