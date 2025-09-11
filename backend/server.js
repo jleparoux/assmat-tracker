@@ -105,6 +105,202 @@ app.post('/api/data/:month', async (req, res) => {
   }
 });
 
+// ========================================
+// API: Calculer les statistiques annuelles
+// ========================================
+
+app.get('/api/annual/:year', async (req, res) => {
+  try {
+    const { year } = req.params;
+    
+    // Validation de l'année
+    const yearNum = parseInt(year);
+    if (isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
+      return res.status(400).json({ error: 'Année invalide' });
+    }
+    
+    console.log(`📊 Calcul des statistiques annuelles pour ${year}`);
+    
+    // Charger toutes les données de l'année
+    const monthsData = [];
+    
+    for (let month = 1; month <= 12; month++) {
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const filePath = path.join(DATA_DIR, `${monthKey}.json`);
+      
+      try {
+        const data = await fs.readFile(filePath, 'utf-8');
+        const parsedData = JSON.parse(data);
+        
+        if (parsedData.dailyData && Object.keys(parsedData.dailyData).length > 0) {
+          monthsData.push({
+            month,
+            data: parsedData.dailyData
+          });
+        }
+      } catch (error) {
+        // Fichier n'existe pas pour ce mois, continuer
+        console.log(`📄 Pas de données pour ${monthKey}`);
+      }
+    }
+    
+    if (monthsData.length === 0) {
+      console.log(`❌ Aucune donnée trouvée pour ${year}`);
+      return res.json({
+        year: yearNum,
+        totalHours: 0,
+        totalSalary: 0,
+        totalWorkDays: 0,
+        totalCongeDays: 0,
+        totalCongeParentDays: 0,
+        totalFraisRepas: 0,
+        totalFraisEntretien: 0,
+        grandTotal: 0,
+        monthlyDetails: [],
+        averageHoursPerMonth: 0,
+        averageSalaryPerMonth: 0
+      });
+    }
+    
+    // Charger les paramètres pour les calculs
+    let settings;
+    try {
+      const settingsPath = path.join(DATA_DIR, 'settings.json');
+      const settingsData = await fs.readFile(settingsPath, 'utf-8');
+      settings = JSON.parse(settingsData);
+    } catch (error) {
+      // Utiliser les paramètres par défaut
+      settings = {
+        tarifHoraire: 4.5,
+        tarifMajoration: 1.25,
+        seuilMajoration: 9,
+        fraisRepas: 5,
+        fraisEntretien: 8,
+        joursMenualises: 22
+      };
+    }
+    
+    console.log(`⚙️ Utilisation des paramètres:`, settings);
+    
+    // Fonction de calcul des heures d'un jour
+    const calculateDayHours = (dayData) => {
+      if (!dayData.depot || !dayData.reprise) return { normal: 0, majore: 0, total: 0 };
+      
+      const [startH, startM] = dayData.depot.split(':').map(Number);
+      const [endH, endM] = dayData.reprise.split(':').map(Number);
+      
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+      const totalMinutes = endMinutes - startMinutes;
+      const totalHours = totalMinutes / 60;
+      
+      if (totalHours <= settings.seuilMajoration) {
+        return { normal: totalHours, majore: 0, total: totalHours };
+      } else {
+        const normalHours = settings.seuilMajoration;
+        const majoredHours = totalHours - settings.seuilMajoration;
+        return { normal: normalHours, majore: majoredHours, total: totalHours };
+      }
+    };
+    
+    // Fonction de calcul du salaire d'un jour
+    const calculateDaySalary = (dayData) => {
+      const { normal, majore } = calculateDayHours(dayData);
+      const normalSalary = normal * settings.tarifHoraire;
+      const majoredSalary = majore * settings.tarifHoraire * settings.tarifMajoration;
+      return normalSalary + majoredSalary;
+    };
+    
+    // Calculer les statistiques
+    let totalHours = 0;
+    let totalSalary = 0;
+    let totalWorkDays = 0;
+    let totalCongeDays = 0;
+    let totalCongeParentDays = 0;
+    let totalFraisRepas = 0;
+    let totalFraisEntretien = 0;
+    
+    const monthlyDetails = monthsData.map(({ month, data }) => {
+      let monthHours = 0;
+      let monthSalary = 0;
+      let monthWorkDays = 0;
+      let monthCongeDays = 0;
+      let monthCongeParentDays = 0;
+      let monthWithMealsDays = 0;
+      let monthWithMaintenanceDays = 0;
+      
+      Object.values(data).forEach(dayData => {
+        if (dayData.status === 'conge-assmat') {
+          monthCongeDays++;
+          if (dayData.fraisRepas) monthWithMealsDays++;
+          if (dayData.fraisEntretien) monthWithMaintenanceDays++;
+        } else if (dayData.status === 'conge-parent') {
+          monthCongeParentDays++;
+          if (dayData.fraisRepas) monthWithMealsDays++;
+          if (dayData.fraisEntretien) monthWithMaintenanceDays++;
+        } else if (dayData.depot && dayData.reprise) {
+          monthWorkDays++;
+          const { total } = calculateDayHours(dayData);
+          monthHours += total;
+          monthSalary += calculateDaySalary(dayData);
+          if (dayData.fraisRepas) monthWithMealsDays++;
+          if (dayData.fraisEntretien) monthWithMaintenanceDays++;
+        }
+      });
+      
+      const monthFraisRepas = monthWithMealsDays * settings.fraisRepas;
+      const monthFraisEntretien = monthWithMaintenanceDays * settings.fraisEntretien;
+      
+      totalHours += monthHours;
+      totalSalary += monthSalary;
+      totalWorkDays += monthWorkDays;
+      totalCongeDays += monthCongeDays;
+      totalCongeParentDays += monthCongeParentDays;
+      totalFraisRepas += monthFraisRepas;
+      totalFraisEntretien += monthFraisEntretien;
+      
+      return {
+        month,
+        monthName: new Date(yearNum, month - 1).toLocaleDateString('fr-FR', { month: 'long' }),
+        hours: Math.round(monthHours * 100) / 100,
+        salary: Math.round(monthSalary * 100) / 100,
+        workDays: monthWorkDays,
+        congeDays: monthCongeDays,
+        congeParentDays: monthCongeParentDays,
+        fraisRepas: Math.round(monthFraisRepas * 100) / 100,
+        fraisEntretien: Math.round(monthFraisEntretien * 100) / 100,
+        total: Math.round((monthSalary + monthFraisRepas + monthFraisEntretien) * 100) / 100
+      };
+    });
+    
+    const result = {
+      year: yearNum,
+      totalHours: Math.round(totalHours * 100) / 100,
+      totalSalary: Math.round(totalSalary * 100) / 100,
+      totalWorkDays,
+      totalCongeDays,
+      totalCongeParentDays,
+      totalFraisRepas: Math.round(totalFraisRepas * 100) / 100,
+      totalFraisEntretien: Math.round(totalFraisEntretien * 100) / 100,
+      grandTotal: Math.round((totalSalary + totalFraisRepas + totalFraisEntretien) * 100) / 100,
+      monthlyDetails,
+      averageHoursPerMonth: Math.round((totalHours / 12) * 100) / 100,
+      averageSalaryPerMonth: Math.round((totalSalary / 12) * 100) / 100
+    };
+    
+    console.log(`✅ Statistiques calculées pour ${year}:`, {
+      totalHours: result.totalHours,
+      totalWorkDays: result.totalWorkDays,
+      monthsWithData: monthsData.length
+    });
+    
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erreur calcul statistiques annuelles:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API: Lire les paramètres
 app.get('/api/settings', async (req, res) => {
   try {
@@ -117,17 +313,29 @@ app.get('/api/settings', async (req, res) => {
     res.json(settings);
   } catch (error) {
     if (error.code === 'ENOENT') {
-      // Fichier n'existe pas, retourner paramètres par défaut
+      // Nouveaux paramètres par défaut avec méthode année complète
       const defaultSettings = {
+        // Paramètres existants
         tarifHoraire: 4.5,
         tarifMajoration: 1.25,
         seuilMajoration: 9,
         fraisRepas: 5,
         fraisEntretien: 8,
-        joursMenualises: 22
+        joursMenualises: 22,
+        
+        // Nouveaux paramètres pour la méthode année complète
+        moisPourMensualisation: 12,
+        semainesPourMensualisation: 52,
+        joursTravaillesParSemaine: 5,
+        semainesTravailAnnee: 52,
+        nbHeuresParSemaine: 9,
+        salaireHoraireNet: 5.06,
+        fraisEntretienJournalier: 5.00,
+        fraisRepasParJournee: 0.00,
+        salaireNetPlafond: 45.51
       };
       
-      console.log('📄 Paramètres par défaut');
+      console.log('📄 Paramètres par défaut avec méthode année complète');
       res.json(defaultSettings);
     } else {
       console.error('❌ Erreur lecture paramètres:', error.message);
@@ -136,14 +344,59 @@ app.get('/api/settings', async (req, res) => {
   }
 });
 
+// 2. FONCTIONS DE CALCUL ANNÉE COMPLÈTE
+const calculateAnneeCompleteValues = (settings) => {
+  const {
+    moisPourMensualisation,
+    semainesPourMensualisation,
+    joursTravaillesParSemaine,
+    semainesTravailAnnee,
+    nbHeuresParSemaine,
+    salaireHoraireNet
+  } = settings;
+
+  // Calculs selon la méthode année complète
+  const nombreJoursMensualisation = Math.round(
+    (semainesTravailAnnee * joursTravaillesParSemaine) / moisPourMensualisation
+  );
+
+  const nombreHeuresMensualisees = Math.round(
+    (nbHeuresParSemaine * semainesTravailAnnee) / moisPourMensualisation
+  );
+
+  const salaireNetMensualise = nombreHeuresMensualisees * salaireHoraireNet;
+  const salaireNetJournalier = salaireNetMensualise / nombreJoursMensualisation;
+
+  return {
+    nombreJoursMensualisation,
+    nombreHeuresMensualisees,
+    salaireNetMensualise: Math.round(salaireNetMensualise * 100) / 100,
+    salaireNetJournalier: Math.round(salaireNetJournalier * 100) / 100
+  };
+};
+
 // API: Sauvegarder les paramètres
 app.post('/api/settings', async (req, res) => {
   try {
     const settings = req.body;
     
-    // Validation des paramètres requis
-    const requiredFields = ['tarifHoraire', 'tarifMajoration', 'seuilMajoration', 'fraisRepas', 'fraisEntretien', 'joursMenualises'];
-    const missingFields = requiredFields.filter(field => settings[field] === undefined || settings[field] === null);
+    // Validation des paramètres requis (mise à jour)
+    const requiredFields = [
+      // Champs existants
+      'tarifHoraire', 'tarifMajoration', 'seuilMajoration', 
+      'fraisRepas', 'fraisEntretien', 'joursMenualises',
+      
+      // Nouveaux champs année complète
+      'moisPourMensualisation', 'semainesPourMensualisation', 
+      'joursTravaillesParSemaine', 'semainesTravailAnnee', 
+      'nbHeuresParSemaine', 'salaireHoraireNet', 
+      'fraisEntretienJournalier', 'fraisRepasParJournee', 
+      'salaireNetPlafond'
+    ];
+    
+    const missingFields = requiredFields.filter(field => 
+      settings[field] === undefined || settings[field] === null
+    );
     
     if (missingFields.length > 0) {
       return res.status(400).json({ 
@@ -151,9 +404,8 @@ app.post('/api/settings', async (req, res) => {
       });
     }
     
-    // Validation des types
-    const numericFields = requiredFields;
-    for (const field of numericFields) {
+    // Validation des types numériques
+    for (const field of requiredFields) {
       if (typeof settings[field] !== 'number' || isNaN(settings[field])) {
         return res.status(400).json({ 
           error: `Le champ ${field} doit être un nombre valide` 
@@ -161,21 +413,138 @@ app.post('/api/settings', async (req, res) => {
       }
     }
     
+    // Validation des règles métier
+    const validationRules = [
+      {
+        field: 'moisPourMensualisation',
+        min: 1, max: 12,
+        message: 'Le nombre de mois pour mensualisation doit être entre 1 et 12'
+      },
+      {
+        field: 'semainesPourMensualisation',
+        min: 1, max: 53,
+        message: 'Le nombre de semaines pour mensualisation doit être entre 1 et 53'
+      },
+      {
+        field: 'joursTravaillesParSemaine',
+        min: 1, max: 7,
+        message: 'Le nombre de jours travaillés par semaine doit être entre 1 et 7'
+      },
+      {
+        field: 'semainesTravailAnnee',
+        min: 1, max: 53,
+        message: 'Le nombre de semaines de travail par année doit être entre 1 et 53'
+      },
+      {
+        field: 'nbHeuresParSemaine',
+        min: 0.5, max: 168,
+        message: 'Le nombre d\'heures par semaine doit être entre 0.5 et 168'
+      },
+      {
+        field: 'salaireHoraireNet',
+        min: 0.01, max: 1000,
+        message: 'Le salaire horaire net doit être entre 0.01 et 1000€'
+      },
+      {
+        field: 'salaireNetPlafond',
+        min: 0.01, max: 1000,
+        message: 'Le salaire net plafond doit être entre 0.01 et 1000€'
+      }
+    ];
+
+    for (const rule of validationRules) {
+      const value = settings[rule.field];
+      if (value < rule.min || value > rule.max) {
+        return res.status(400).json({ error: rule.message });
+      }
+    }
+    
     const filePath = path.join(DATA_DIR, 'settings.json');
     
-    // Ajouter métadonnées
+    // Calculs automatiques
+    const calculatedValues = calculateAnneeCompleteValues(settings);
+    
+    // Ajouter métadonnées et calculs automatiques
     const settingsData = {
       ...settings,
+      ...calculatedValues,
       lastUpdated: new Date().toISOString()
     };
     
     await fs.writeFile(filePath, JSON.stringify(settingsData, null, 2), 'utf-8');
     
-    console.log('⚙️ Paramètres sauvegardés');
-    res.json({ success: true, message: 'Paramètres sauvegardés avec succès' });
+    console.log('⚙️ Paramètres sauvegardés avec calculs automatiques');
+    res.json({ 
+      success: true, 
+      message: 'Paramètres sauvegardés avec succès', 
+      calculatedValues 
+    });
   } catch (error) {
     console.error('❌ Erreur sauvegarde paramètres:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/calculations', async (req, res) => {
+  try {
+    const settings = req.body;
+    
+    // Validation des champs requis pour les calculs
+    const requiredForCalculation = [
+      'moisPourMensualisation', 'semainesPourMensualisation', 
+      'joursTravaillesParSemaine', 'semainesTravailAnnee', 
+      'nbHeuresParSemaine', 'salaireHoraireNet'
+    ];
+    
+    const missingFields = requiredForCalculation.filter(field => 
+      settings[field] === undefined || settings[field] === null || isNaN(settings[field])
+    );
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({ 
+        error: `Champs manquants pour le calcul: ${missingFields.join(', ')}` 
+      });
+    }
+    
+    const calculations = calculateAnneeCompleteValues(settings);
+    
+    console.log('🧮 Calculs temps réel générés');
+    res.json(calculations);
+  } catch (error) {
+    console.error('❌ Erreur calculs temps réel:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/calculations', async (req, res) => {
+  try {
+    const filePath = path.join(DATA_DIR, 'settings.json');
+    const data = await fs.readFile(filePath, 'utf-8');
+    const settings = JSON.parse(data);
+    
+    const calculations = calculateAnneeCompleteValues(settings);
+    
+    console.log('🧮 Calculs récupérés depuis les paramètres sauvegardés');
+    res.json(calculations);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      // Utiliser les paramètres par défaut pour les calculs
+      const defaultSettings = {
+        moisPourMensualisation: 12,
+        semainesPourMensualisation: 52,
+        joursTravaillesParSemaine: 5,
+        semainesTravailAnnee: 52,
+        nbHeuresParSemaine: 9,
+        salaireHoraireNet: 5.06
+      };
+      
+      const calculations = calculateAnneeCompleteValues(defaultSettings);
+      console.log('🧮 Calculs avec paramètres par défaut');
+      res.json(calculations);
+    } else {
+      console.error('❌ Erreur récupération calculs:', error.message);
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
