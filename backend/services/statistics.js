@@ -15,7 +15,12 @@ const computeDayHours = (dayData = {}, settings = {}) => {
 
   const startMinutes = startH * 60 + startM;
   const endMinutes = endH * 60 + endM;
-  const totalMinutes = endMinutes - startMinutes;
+  let totalMinutes = endMinutes - startMinutes;
+
+  if (totalMinutes < 0) {
+    totalMinutes += 24 * 60;
+  }
+
   const totalHours = totalMinutes / 60;
 
   const seuilMajoration = settings.seuilMajoration ?? 0;
