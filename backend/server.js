@@ -4,9 +4,20 @@ const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
 
+const { DATA_DIR } = require('./config');
+const {
+  DEFAULT_SETTINGS,
+  calculateAnneeCompleteValues,
+  loadSettings,
+  persistSettings,
+} = require('./services/settings');
+const {
+  computeMonthlyStats,
+  computeAnnualStats,
+} = require('./services/statistics');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DATA_DIR = path.join(__dirname, '../data');
 
 // Middleware
 app.use(cors());
@@ -35,30 +46,50 @@ const ensureDataDir = async () => {
 app.get('/api/data/:month', async (req, res) => {
   try {
     const { month } = req.params; // Format: 2025-01
-    
-    // Validation du format mois
+
     if (!/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
     }
-    
+
+    const settings = await loadSettings();
     const filePath = path.join(DATA_DIR, `${month}.json`);
-    
-    const data = await fs.readFile(filePath, 'utf-8');
-    const parsedData = JSON.parse(data);
 
-    console.log(`📖 Données chargées pour ${month}:`, parsedData);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      const parsedData = JSON.parse(data);
+      const dailyData = parsedData.dailyData || {};
+      const monthlyStats = computeMonthlyStats(dailyData, settings);
 
-    // console.log(`📖 Lecture des données: ${month}`);
-    res.json(parsedData);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      // Fichier n'existe pas, retourner données vides avec structure correcte
-      console.log(`📄 Nouveau mois: ${req.params.month}`);
-      res.json({ dailyData: {} });
-    } else {
-      console.error('❌ Erreur lecture données:', error.message);
-      res.status(500).json({ error: error.message });
+      console.log(`📖 Données chargées pour ${month}`);
+
+      res.json({
+        month,
+        dailyData,
+        lastUpdated: parsedData.lastUpdated || null,
+        stats: {
+          monthly: monthlyStats,
+        },
+      });
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        console.log(`📄 Nouveau mois: ${month}`);
+        const monthlyStats = computeMonthlyStats({}, settings);
+
+        res.json({
+          month,
+          dailyData: {},
+          lastUpdated: null,
+          stats: {
+            monthly: monthlyStats,
+          },
+        });
+      } else {
+        throw error;
+      }
     }
+  } catch (error) {
+    console.error('❌ Erreur lecture données:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -68,37 +99,41 @@ app.post('/api/data/:month', async (req, res) => {
     const { month } = req.params;
     const { dailyData } = req.body;
 
-    // debug log
     console.log('📥 POST reçu pour mois:', month);
     console.log('📦 Body reçu:', req.body);
-    console.log('📊 dailyData extraite:', dailyData);
-    console.log('📊 Type dailyData:', typeof dailyData);
-    
-    // Validation du format mois
+
     if (!/^\d{4}-\d{2}$/.test(month)) {
-        console.log('❌ Format mois invalide');
-        return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
+      console.log('❌ Format mois invalide');
+      return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
     }
-    
-    // Validation des données
+
     if (!dailyData || typeof dailyData !== 'object') {
-        console.log('❌ Données dailyData invalides');
-        return res.status(400).json({ error: 'Données dailyData manquantes ou invalides' });
+      console.log('❌ Données dailyData invalides');
+      return res.status(400).json({ error: 'Données dailyData manquantes ou invalides' });
     }
-    
+
+    const settings = await loadSettings();
     const filePath = path.join(DATA_DIR, `${month}.json`);
-    
-    // Structure des données à sauvegarder
+
     const dataToSave = {
       month,
       dailyData,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
     };
-    
+
     await fs.writeFile(filePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
-    
+
+    const monthlyStats = computeMonthlyStats(dailyData, settings);
+
     console.log(`💾 Données sauvegardées: ${month}`);
-    res.json({ success: true, message: 'Données sauvegardées avec succès' });
+    res.json({
+      success: true,
+      message: 'Données sauvegardées avec succès',
+      stats: {
+        monthly: monthlyStats,
+      },
+      lastUpdated: dataToSave.lastUpdated,
+    });
   } catch (error) {
     console.error('❌ Erreur sauvegarde données:', error.message);
     res.status(500).json({ error: error.message });
@@ -112,188 +147,53 @@ app.post('/api/data/:month', async (req, res) => {
 app.get('/api/annual/:year', async (req, res) => {
   try {
     const { year } = req.params;
-    
+
     // Validation de l'année
     const yearNum = parseInt(year);
     if (isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
       return res.status(400).json({ error: 'Année invalide' });
     }
-    
+
     console.log(`📊 Calcul des statistiques annuelles pour ${year}`);
-    
-    // Charger toutes les données de l'année
+
+    const settings = await loadSettings();
     const monthsData = [];
-    
+
     for (let month = 1; month <= 12; month++) {
       const monthKey = `${year}-${String(month).padStart(2, '0')}`;
       const filePath = path.join(DATA_DIR, `${monthKey}.json`);
-      
+
       try {
         const data = await fs.readFile(filePath, 'utf-8');
         const parsedData = JSON.parse(data);
-        
+
         if (parsedData.dailyData && Object.keys(parsedData.dailyData).length > 0) {
           monthsData.push({
-            month,
-            data: parsedData.dailyData
+            monthKey,
+            dailyData: parsedData.dailyData,
           });
         }
       } catch (error) {
-        // Fichier n'existe pas pour ce mois, continuer
-        console.log(`📄 Pas de données pour ${monthKey}`);
+        if (error.code === 'ENOENT') {
+          console.log(`📄 Pas de données pour ${monthKey}`);
+        } else {
+          console.error(`❌ Erreur lecture ${monthKey}:`, error.message);
+        }
       }
     }
-    
+
+    const result = computeAnnualStats(monthsData, settings, yearNum);
+
     if (monthsData.length === 0) {
       console.log(`❌ Aucune donnée trouvée pour ${year}`);
-      return res.json({
-        year: yearNum,
-        totalHours: 0,
-        totalSalary: 0,
-        totalWorkDays: 0,
-        totalCongeDays: 0,
-        totalCongeParentDays: 0,
-        totalFraisRepas: 0,
-        totalFraisEntretien: 0,
-        grandTotal: 0,
-        monthlyDetails: [],
-        averageHoursPerMonth: 0,
-        averageSalaryPerMonth: 0
+    } else {
+      console.log(`✅ Statistiques calculées pour ${year}:`, {
+        totalHours: result.totalHours,
+        totalWorkDays: result.totalWorkDays,
+        monthsWithData: monthsData.length,
       });
     }
-    
-    // Charger les paramètres pour les calculs
-    let settings;
-    try {
-      const settingsPath = path.join(DATA_DIR, 'settings.json');
-      const settingsData = await fs.readFile(settingsPath, 'utf-8');
-      settings = JSON.parse(settingsData);
-    } catch (error) {
-      // Utiliser les paramètres par défaut
-      settings = {
-        tarifHoraire: 4.5,
-        tarifMajoration: 1.25,
-        seuilMajoration: 9,
-        fraisRepas: 5,
-        fraisEntretien: 8,
-        joursMenualises: 22
-      };
-    }
-    
-    console.log(`⚙️ Utilisation des paramètres:`, settings);
-    
-    // Fonction de calcul des heures d'un jour
-    const calculateDayHours = (dayData) => {
-      if (!dayData.depot || !dayData.reprise) return { normal: 0, majore: 0, total: 0 };
-      
-      const [startH, startM] = dayData.depot.split(':').map(Number);
-      const [endH, endM] = dayData.reprise.split(':').map(Number);
-      
-      const startMinutes = startH * 60 + startM;
-      const endMinutes = endH * 60 + endM;
-      const totalMinutes = endMinutes - startMinutes;
-      const totalHours = totalMinutes / 60;
-      
-      if (totalHours <= settings.seuilMajoration) {
-        return { normal: totalHours, majore: 0, total: totalHours };
-      } else {
-        const normalHours = settings.seuilMajoration;
-        const majoredHours = totalHours - settings.seuilMajoration;
-        return { normal: normalHours, majore: majoredHours, total: totalHours };
-      }
-    };
-    
-    // Fonction de calcul du salaire d'un jour
-    const calculateDaySalary = (dayData) => {
-      const { normal, majore } = calculateDayHours(dayData);
-      const normalSalary = normal * settings.tarifHoraire;
-      const majoredSalary = majore * settings.tarifHoraire * settings.tarifMajoration;
-      return normalSalary + majoredSalary;
-    };
-    
-    // Calculer les statistiques
-    let totalHours = 0;
-    let totalSalary = 0;
-    let totalWorkDays = 0;
-    let totalCongeDays = 0;
-    let totalCongeParentDays = 0;
-    let totalFraisRepas = 0;
-    let totalFraisEntretien = 0;
-    
-    const monthlyDetails = monthsData.map(({ month, data }) => {
-      let monthHours = 0;
-      let monthSalary = 0;
-      let monthWorkDays = 0;
-      let monthCongeDays = 0;
-      let monthCongeParentDays = 0;
-      let monthWithMealsDays = 0;
-      let monthWithMaintenanceDays = 0;
-      
-      Object.values(data).forEach(dayData => {
-        if (dayData.status === 'conge-assmat') {
-          monthCongeDays++;
-          if (dayData.fraisRepas) monthWithMealsDays++;
-          if (dayData.fraisEntretien) monthWithMaintenanceDays++;
-        } else if (dayData.status === 'conge-parent') {
-          monthCongeParentDays++;
-          if (dayData.fraisRepas) monthWithMealsDays++;
-          if (dayData.fraisEntretien) monthWithMaintenanceDays++;
-        } else if (dayData.depot && dayData.reprise) {
-          monthWorkDays++;
-          const { total } = calculateDayHours(dayData);
-          monthHours += total;
-          monthSalary += calculateDaySalary(dayData);
-          if (dayData.fraisRepas) monthWithMealsDays++;
-          if (dayData.fraisEntretien) monthWithMaintenanceDays++;
-        }
-      });
-      
-      const monthFraisRepas = monthWithMealsDays * settings.fraisRepas;
-      const monthFraisEntretien = monthWithMaintenanceDays * settings.fraisEntretien;
-      
-      totalHours += monthHours;
-      totalSalary += monthSalary;
-      totalWorkDays += monthWorkDays;
-      totalCongeDays += monthCongeDays;
-      totalCongeParentDays += monthCongeParentDays;
-      totalFraisRepas += monthFraisRepas;
-      totalFraisEntretien += monthFraisEntretien;
-      
-      return {
-        month,
-        monthName: new Date(yearNum, month - 1).toLocaleDateString('fr-FR', { month: 'long' }),
-        hours: Math.round(monthHours * 100) / 100,
-        salary: Math.round(monthSalary * 100) / 100,
-        workDays: monthWorkDays,
-        congeDays: monthCongeDays,
-        congeParentDays: monthCongeParentDays,
-        fraisRepas: Math.round(monthFraisRepas * 100) / 100,
-        fraisEntretien: Math.round(monthFraisEntretien * 100) / 100,
-        total: Math.round((monthSalary + monthFraisRepas + monthFraisEntretien) * 100) / 100
-      };
-    });
-    
-    const result = {
-      year: yearNum,
-      totalHours: Math.round(totalHours * 100) / 100,
-      totalSalary: Math.round(totalSalary * 100) / 100,
-      totalWorkDays,
-      totalCongeDays,
-      totalCongeParentDays,
-      totalFraisRepas: Math.round(totalFraisRepas * 100) / 100,
-      totalFraisEntretien: Math.round(totalFraisEntretien * 100) / 100,
-      grandTotal: Math.round((totalSalary + totalFraisRepas + totalFraisEntretien) * 100) / 100,
-      monthlyDetails,
-      averageHoursPerMonth: Math.round((totalHours / 12) * 100) / 100,
-      averageSalaryPerMonth: Math.round((totalSalary / 12) * 100) / 100
-    };
-    
-    console.log(`✅ Statistiques calculées pour ${year}:`, {
-      totalHours: result.totalHours,
-      totalWorkDays: result.totalWorkDays,
-      monthsWithData: monthsData.length
-    });
-    
+
     res.json(result);
   } catch (error) {
     console.error('❌ Erreur calcul statistiques annuelles:', error.message);
@@ -304,86 +204,29 @@ app.get('/api/annual/:year', async (req, res) => {
 // API: Lire les paramètres
 app.get('/api/settings', async (req, res) => {
   try {
-    const filePath = path.join(DATA_DIR, 'settings.json');
-    
-    const data = await fs.readFile(filePath, 'utf-8');
-    const settings = JSON.parse(data);
-    
+    const settings = await loadSettings();
     console.log('⚙️ Paramètres chargés');
     res.json(settings);
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      // Nouveaux paramètres par défaut avec méthode année complète
-      const defaultSettings = {
-        // Paramètres existants
-        tarifHoraire: 4.5,
-        tarifMajoration: 1.25,
-        seuilMajoration: 9,
-        fraisRepas: 5,
-        fraisEntretien: 8,
-        joursMenualises: 22,
-        
-        // Nouveaux paramètres pour la méthode année complète
-        moisPourMensualisation: 12,
-        semainesPourMensualisation: 52,
-        joursTravaillesParSemaine: 5,
-        semainesTravailAnnee: 52,
-        nbHeuresParSemaine: 9,
-        salaireHoraireNet: 5.06,
-        fraisEntretienJournalier: 5.00,
-        fraisRepasParJournee: 0.00,
-        salaireNetPlafond: 45.51
-      };
-      
-      console.log('📄 Paramètres par défaut avec méthode année complète');
-      res.json(defaultSettings);
-    } else {
-      console.error('❌ Erreur lecture paramètres:', error.message);
-      res.status(500).json({ error: error.message });
-    }
+    console.error('❌ Erreur lecture paramètres:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
-
-// 2. FONCTIONS DE CALCUL ANNÉE COMPLÈTE
-const calculateAnneeCompleteValues = (settings) => {
-  const {
-    moisPourMensualisation,
-    semainesPourMensualisation,
-    joursTravaillesParSemaine,
-    semainesTravailAnnee,
-    nbHeuresParSemaine,
-    salaireHoraireNet
-  } = settings;
-
-  // Calculs selon la méthode année complète
-  const nombreJoursMensualisation = Math.round(
-    (semainesTravailAnnee * joursTravaillesParSemaine) / moisPourMensualisation
-  );
-
-  const nombreHeuresMensualisees = Math.round(
-    (nbHeuresParSemaine * semainesTravailAnnee) / moisPourMensualisation
-  );
-
-  const salaireNetMensualise = nombreHeuresMensualisees * salaireHoraireNet;
-  const salaireNetJournalier = salaireNetMensualise / nombreJoursMensualisation;
-
-  return {
-    nombreJoursMensualisation,
-    nombreHeuresMensualisees,
-    salaireNetMensualise: Math.round(salaireNetMensualise * 100) / 100,
-    salaireNetJournalier: Math.round(salaireNetJournalier * 100) / 100
-  };
-};
 
 // API: Sauvegarder les paramètres
 app.post('/api/settings', async (req, res) => {
   try {
-    const settings = req.body;
-    
+    const incomingSettings = req.body || {};
+    const settings = { ...incomingSettings };
+
+    if (settings.joursMensualises !== undefined && settings.joursMenualises === undefined) {
+      settings.joursMenualises = settings.joursMensualises;
+    }
+
     // Validation des paramètres requis (mise à jour)
     const requiredFields = [
       // Champs existants
-      'tarifHoraire', 'tarifMajoration', 'seuilMajoration', 
+      'tarifHoraire', 'tarifMajoration', 'seuilMajoration',
       'fraisRepas', 'fraisEntretien', 'joursMenualises',
       
       // Nouveaux champs année complète
@@ -459,25 +302,14 @@ app.post('/api/settings', async (req, res) => {
       }
     }
     
-    const filePath = path.join(DATA_DIR, 'settings.json');
-    
-    // Calculs automatiques
-    const calculatedValues = calculateAnneeCompleteValues(settings);
-    
-    // Ajouter métadonnées et calculs automatiques
-    const settingsData = {
-      ...settings,
-      ...calculatedValues,
-      lastUpdated: new Date().toISOString()
-    };
-    
-    await fs.writeFile(filePath, JSON.stringify(settingsData, null, 2), 'utf-8');
-    
+    const { calculatedValues, storedSettings } = await persistSettings(settings);
+
     console.log('⚙️ Paramètres sauvegardés avec calculs automatiques');
-    res.json({ 
-      success: true, 
-      message: 'Paramètres sauvegardés avec succès', 
-      calculatedValues 
+    res.json({
+      success: true,
+      message: 'Paramètres sauvegardés avec succès',
+      calculatedValues,
+      settings: storedSettings,
     });
   } catch (error) {
     console.error('❌ Erreur sauvegarde paramètres:', error.message);
@@ -518,33 +350,15 @@ app.post('/api/calculations', async (req, res) => {
 
 app.get('/api/calculations', async (req, res) => {
   try {
-    const filePath = path.join(DATA_DIR, 'settings.json');
-    const data = await fs.readFile(filePath, 'utf-8');
-    const settings = JSON.parse(data);
-    
+    const settings = await loadSettings();
     const calculations = calculateAnneeCompleteValues(settings);
-    
+
     console.log('🧮 Calculs récupérés depuis les paramètres sauvegardés');
     res.json(calculations);
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      // Utiliser les paramètres par défaut pour les calculs
-      const defaultSettings = {
-        moisPourMensualisation: 12,
-        semainesPourMensualisation: 52,
-        joursTravaillesParSemaine: 5,
-        semainesTravailAnnee: 52,
-        nbHeuresParSemaine: 9,
-        salaireHoraireNet: 5.06
-      };
-      
-      const calculations = calculateAnneeCompleteValues(defaultSettings);
-      console.log('🧮 Calculs avec paramètres par défaut');
-      res.json(calculations);
-    } else {
-      console.error('❌ Erreur récupération calculs:', error.message);
-      res.status(500).json({ error: error.message });
-    }
+    console.error('❌ Erreur récupération calculs:', error.message);
+    const fallback = calculateAnneeCompleteValues(DEFAULT_SETTINGS);
+    res.status(500).json({ error: error.message, fallback });
   }
 });
 
@@ -613,11 +427,9 @@ app.get('/api/export', async (req, res) => {
     
     // Charger les paramètres
     try {
-      const settingsPath = path.join(DATA_DIR, 'settings.json');
-      const settingsData = await fs.readFile(settingsPath, 'utf-8');
-      exportData.settings = JSON.parse(settingsData);
+      exportData.settings = await loadSettings();
     } catch (error) {
-      console.log('⚠️ Aucun paramètre trouvé pour l\'export');
+      console.log('⚠️ Impossible de charger les paramètres pour l\'export:', error.message);
     }
     
     // Charger tous les mois
@@ -716,50 +528,41 @@ app.get('/api/stats', async (req, res) => {
   try {
     const files = await fs.readdir(DATA_DIR);
     const dataFiles = files.filter(file => file.match(/^\d{4}-\d{2}\.json$/));
-    
+
     let totalDays = 0;
     let totalHours = 0;
     const monthsData = [];
-    
+
+    const settings = await loadSettings();
+
     for (const file of dataFiles) {
       const monthKey = file.replace('.json', '');
       const filePath = path.join(DATA_DIR, file);
-      
+
       try {
         const monthData = await fs.readFile(filePath, 'utf-8');
         const parsed = JSON.parse(monthData);
-        
-        if (parsed.dailyData) {
-          const monthDays = Object.keys(parsed.dailyData).length;
+        const dailyData = parsed.dailyData || {};
+
+        if (Object.keys(dailyData).length > 0) {
+          const monthDays = Object.keys(dailyData).length;
+          const monthStats = computeMonthlyStats(dailyData, settings);
+
           totalDays += monthDays;
-          
-          // Calculer les heures pour ce mois
-          let monthHours = 0;
-          Object.values(parsed.dailyData).forEach(day => {
-            if (day.depot && day.reprise) {
-              // Calcul des heures
-              const [startH, startM] = day.depot.split(':').map(Number);
-              const [endH, endM] = day.reprise.split(':').map(Number);
-              const startMinutes = startH * 60 + startM;
-              const endMinutes = endH * 60 + endM;
-              let totalMinutes = endMinutes - startMinutes;
-              if (totalMinutes < 0) totalMinutes += 24 * 60;
-              monthHours += totalMinutes / 60;
-            }
-          });
-          
-          totalHours += monthHours;
+          totalHours += monthStats.totalHours;
+
           monthsData.push({
             month: monthKey,
             days: monthDays,
-            hours: Math.round(monthHours * 10) / 10
+            hours: Math.round(monthStats.totalHours * 10) / 10,
+            salary: monthStats.totalSalary,
           });
         }
       } catch (error) {
         console.error(`❌ Erreur stats ${file}:`, error.message);
       }
     }
-    
+
     const stats = {
       totalMonths: dataFiles.length,
       totalDays,

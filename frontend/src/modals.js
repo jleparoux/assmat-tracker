@@ -2,15 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { Calculator, Euro, Calendar, Clock, Home, Utensils, Info, X } from 'lucide-react';
 
-import { 
-  calculateAnneeCompleteValues, 
+import {
+  calculateAnneeCompleteValues,
   formatDate,
   formatTimeRangeFrench,
   calculateDayHours,
-  calculateMonthlyStats,
   getCalculationFormulas,
   getSettingsFieldLabels,
-  validateAnneeCompleteSettings, 
+  validateAnneeCompleteSettings,
 } from './utils';
 
 // ============================================
@@ -227,12 +226,13 @@ export function DayModal({
 // MODAL VUE ANNUELLE
 // ============================================
 
-export function AnnualView({ 
+export function AnnualView({
   showAnnualView,
   selectedYear,
   loadingAnnual,
   annualStats,
   settings,
+  calculatedValues,
   onYearChange,
   onClose
 }) {
@@ -245,15 +245,23 @@ export function AnnualView({
   };
 
   // Calcul du salaire mensualisé annuel
+  const mensualiseStats = annualStats?.mensualise;
+
   const calculateAnnualMensualise = () => {
-    if (!settings || !settings.salaireHoraireNet || !settings.nombreHeuresMensualisees) {
+    if (mensualiseStats?.salaireAnnuel !== undefined) {
+      return mensualiseStats.salaireAnnuel;
+    }
+    if (!calculatedValues || !calculatedValues.salaireNetMensualise) {
       return 0;
     }
-    return settings.nombreHeuresMensualisees * settings.salaireHoraireNet * 12;
+    return calculatedValues.salaireNetMensualise * 12;
   };
 
   // Calcul du total mensualisé avec frais
   const calculateTotalMensualiseWithFrais = () => {
+    if (mensualiseStats?.totalWithFrais !== undefined) {
+      return mensualiseStats.totalWithFrais;
+    }
     const salaireMensualise = calculateAnnualMensualise();
     const totalFrais = annualStats ? (annualStats.totalFraisRepas + annualStats.totalFraisEntretien) : 0;
     return salaireMensualise + totalFrais;
@@ -261,10 +269,13 @@ export function AnnualView({
 
   // Fonction pour calculer le salaire mensualisé par mois
   const getMonthlySalaireMensualise = () => {
-    if (!settings || !settings.salaireHoraireNet || !settings.nombreHeuresMensualisees) {
+    if (mensualiseStats?.salaireMensuel !== undefined) {
+      return mensualiseStats.salaireMensuel;
+    }
+    if (!calculatedValues || !calculatedValues.salaireNetMensualise) {
       return 0;
     }
-    return settings.nombreHeuresMensualisees * settings.salaireHoraireNet;
+    return calculatedValues.salaireNetMensualise;
   };
 
   if (!showAnnualView) return null;
