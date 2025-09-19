@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Settings, Save, BarChart3, Plus, X, Copy, Trash2, Upload, Download } from 'lucide-react';
 
-import { 
-  formatDate, 
-  calculateMonthlyStats, 
-  calculateAnnualStats,
+import {
+  formatDate,
   calculateTotalAnneeComplete,
   calculateAnneeCompleteValues,
-  validateAnneeCompleteSettings 
+  validateAnneeCompleteSettings
 } from './utils';
 import { DayModal, SettingsModal, DuplicateModal, AnnualView } from './modals';
 import Calendar from './calendar';
@@ -45,6 +43,7 @@ const App = () => {
     salaireNetMensualise: 987.07,
     salaireNetJournalier: 44.87
   });
+  const [monthlyStats, setMonthlyStats] = useState(null);
   
   // États UI
   const [loading, setLoading] = useState(false);
@@ -127,29 +126,6 @@ const App = () => {
     return hasChanges ? updatedData : monthData;
   };
 
-  const calculateExtendedAnnualStats = (annualStats, settings) => {
-    if (!annualStats || !settings) return annualStats;
-    
-    const {
-      nombreHeuresMensualisees = 195,
-      salaireHoraireNet = 5.06
-    } = settings;
-    
-    const salaireMensualise = nombreHeuresMensualisees * salaireHoraireNet;
-    const salaireAnnuelMensualise = salaireMensualise * 12;
-    
-    return {
-      ...annualStats,
-      // Ajout des données mensualisées
-      mensualise: {
-        salaireAnnuel: salaireAnnuelMensualise,
-        salaireMensuel: salaireMensualise,
-        totalWithFrais: salaireAnnuelMensualise + annualStats.totalFraisRepas + annualStats.totalFraisEntretien,
-        ecartSalaire: salaireAnnuelMensualise - annualStats.totalSalary
-      }
-    };
-  };
-
   // API calls
   const loadMonthData = async (date) => {
     setLoading(true);
@@ -160,19 +136,21 @@ const App = () => {
       if (response.ok) {
         const data = await response.json();
         setDailyData(data.dailyData || {});
+        setMonthlyStats(data.stats?.monthly || null);
       } else if (response.status === 404) {
         setDailyData({});
+        setMonthlyStats(null);
       }
     } catch (error) {
       console.error('Erreur chargement données:', error);
       setDailyData({});
+      setMonthlyStats(null);
     } finally {
       setLoading(false);
     }
   };
 
   const saveMonthData = async (date, data) => {
-
     console.log('💾 Données à sauvegarder:', data);
     console.log('📦 Payload envoyé:', { dailyData: data });
 
@@ -184,15 +162,23 @@ const App = () => {
         body: JSON.stringify({ dailyData: data })
       });
 
+      const payload = await response.json().catch(() => null);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Détails erreur 400:', errorData);
+        if (payload?.error) {
+          console.error('❌ Détails erreur 400:', payload);
+        }
+        return null;
       }
-      
-      return response.ok;
+
+      if (payload?.stats?.monthly) {
+        setMonthlyStats(payload.stats.monthly);
+      }
+
+      return payload;
     } catch (error) {
       console.error('Erreur sauvegarde:', error);
-      return false;
+      return null;
     }
   };
 
@@ -286,12 +272,10 @@ const App = () => {
       const response = await fetch(`${API_BASE}/api/annual/${year}`);
       if (response.ok) {
         const data = await response.json();
-        
-        // Enrichir avec les calculs mensualisés
-        const extendedStats = calculateExtendedAnnualStats(data, settings);
-        setAnnualStats(extendedStats);
-        
-        console.log('📊 Données annuelles chargées:', extendedStats);
+
+        setAnnualStats(data);
+
+        console.log('📊 Données annuelles chargées:', data);
       } else {
         console.error('❌ Erreur chargement données annuelles');
         setAnnualStats(null);
@@ -439,25 +423,6 @@ const App = () => {
     setShowDayModal(false);
   };
 
-  const calculateExtendedMonthlyStats = () => {
-    const basicStats = calculateMonthlyStats(dailyData, settings);
-    const anneeCompleteValues = calculatedValues;
-    
-    return {
-      ...basicStats,
-      anneeComplete: anneeCompleteValues,
-      // Comparaison réel vs mensualisé
-      ecartMensualise: {
-        joursTravailles: basicStats.workDays,
-        joursTheorique: anneeCompleteValues.nombreJoursMensualisation,
-        ecartJours: basicStats.workDays - anneeCompleteValues.nombreJoursMensualisation,
-        salaireReel: basicStats.totalSalary,
-        salaireMensualise: anneeCompleteValues.salaireNetMensualise,
-        ecartSalaire: basicStats.totalSalary - anneeCompleteValues.salaireNetMensualise
-      }
-    };
-  };
-
   // Raccourcis clavier
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -506,9 +471,9 @@ const App = () => {
     loadHolidays(currentDate.getFullYear());
   }, [currentDate]);
 
-  const monthlyStats = calculateMonthlyStats(dailyData, settings);
   console.log('📊 dailyData utilisé pour stats:', Object.keys(dailyData).length, 'jours');
   console.log('📅 Mois affiché:', currentDate.toLocaleDateString('fr-FR', { month: 'long' }));
+  console.log('📈 Statistiques mensuelles (backend):', monthlyStats);
 
   useEffect(() => {
     if (showAnnualView) {
@@ -534,8 +499,8 @@ const App = () => {
 
   // Actions manuelles
   const manualSave = async () => {
-    const success = await saveMonthData(currentDate, dailyData);
-    if (success) {
+    const result = await saveMonthData(currentDate, dailyData);
+    if (result?.success) {
       alert('Données sauvegardées avec succès !');
     } else {
       alert('Erreur lors de la sauvegarde');
@@ -742,28 +707,27 @@ const App = () => {
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">📊 Récapitulatif mensuel</h3>
               
-              {(() => {
-                const monthlyStats = calculateExtendedMonthlyStats();
-                return (
-                  <div className="space-y-3">
-                    {/* Stats mensuelles */}
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Heures travaillées:</span>
-                        <span className="font-medium">{monthlyStats.totalHours.toFixed(1)}h</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Jours travaillés:</span>
-                        <span className="font-medium">{monthlyStats.workDays}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Salaire brut:</span>
-                        <span className="font-medium">{monthlyStats.totalSalary.toFixed(2)}€</span>
-                      </div>
-                      
-                      <hr className="my-3" />
-                      
-                      {/* infos année complète */}
+              {monthlyStats ? (
+                <div className="space-y-3">
+                  {/* Stats mensuelles */}
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Heures travaillées:</span>
+                      <span className="font-medium">{monthlyStats.totalHours.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Jours travaillés:</span>
+                      <span className="font-medium">{monthlyStats.workDays}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Salaire brut:</span>
+                      <span className="font-medium">{monthlyStats.totalSalary.toFixed(2)}€</span>
+                    </div>
+
+                    <hr className="my-3" />
+
+                    {/* infos année complète */}
+                    {monthlyStats.anneeComplete && (
                       <div className="bg-blue-50 p-3 rounded-lg">
                         <h4 className="font-medium text-blue-900 mb-2">Méthode année complète</h4>
                         <div className="space-y-1 text-xs">
@@ -777,28 +741,32 @@ const App = () => {
                           </div>
                         </div>
                       </div>
-                      
-                      <hr className="my-3" />
-                      
-                      {/* Autres stats mensuelles */}
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Frais repas:</span>
-                        <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Frais entretien:</span>
-                        <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-gray-900">Total (année complète):</span>
-                        <span className="font-bold text-green-600">
-                          {calculateTotalAnneeComplete(monthlyStats).toFixed(2)}€
-                        </span>
-                      </div>
+                    )}
+
+                    <hr className="my-3" />
+
+                    {/* Autres stats mensuelles */}
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Frais repas:</span>
+                      <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Frais entretien:</span>
+                      <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-gray-900">Total (année complète):</span>
+                      <span className="font-bold text-green-600">
+                        {calculateTotalAnneeComplete(monthlyStats).toFixed(2)}€
+                      </span>
                     </div>
                   </div>
-                );
-              })()}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  Aucune statistique disponible pour ce mois.
+                </div>
+              )}
             </div>
 
             {/* Paramètres rapides */}
@@ -895,6 +863,7 @@ const App = () => {
         loadingAnnual={loadingAnnual}
         annualStats={annualStats}
         settings={settings}
+        calculatedValues={calculatedValues}
         onYearChange={setSelectedYear}
         onClose={() => setShowAnnualView(false)}
       />

@@ -1,0 +1,11 @@
+{
+  "name": "assmat-tracker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Scripts racine pour le projet AssmatTracker",
+  "scripts": {
+    "test": "npm --prefix backend test && npm --prefix frontend test -- --watchAll=false --passWithNoTests",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test -- --watchAll=false --passWithNoTests"
+  }
+}
