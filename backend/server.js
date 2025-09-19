@@ -4,9 +4,20 @@ const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
 
+const { DATA_DIR } = require('./config');
+const {
+  DEFAULT_SETTINGS,
+  calculateAnneeCompleteValues,
+  loadSettings,
+  persistSettings,
+} = require('./services/settings');
+const {
+  computeMonthlyStats,
+  computeAnnualStats,
+} = require('./services/statistics');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DATA_DIR = path.join(__dirname, '../data');
 
 // Middleware
 app.use(cors());
@@ -35,30 +46,50 @@ const ensureDataDir = async () => {
 app.get('/api/data/:month', async (req, res) => {
   try {
     const { month } = req.params; // Format: 2025-01
-    
-    // Validation du format mois
+
     if (!/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
     }
-    
+
+    const settings = await loadSettings();
     const filePath = path.join(DATA_DIR, `${month}.json`);
-    
-    const data = await fs.readFile(filePath, 'utf-8');
-    const parsedData = JSON.parse(data);
 
-    console.log(`📖 Données chargées pour ${month}:`, parsedData);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      const parsedData = JSON.parse(data);
+      const dailyData = parsedData.dailyData || {};
+      const monthlyStats = computeMonthlyStats(dailyData, settings);
 
-    // console.log(`📖 Lecture des données: ${month}`);
-    res.json(parsedData);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      // Fichier n'existe pas, retourner données vides avec structure correcte
-      console.log(`📄 Nouveau mois: ${req.params.month}`);
-      res.json({ dailyData: {} });
-    } else {
-      console.error('❌ Erreur lecture données:', error.message);
-      res.status(500).json({ error: error.message });
+      console.log(`📖 Données chargées pour ${month}`);
+
+      res.json({
+        month,
+        dailyData,
+        lastUpdated: parsedData.lastUpdated || null,
+        stats: {
+          monthly: monthlyStats,
+        },
+      });
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        console.log(`📄 Nouveau mois: ${month}`);
+        const monthlyStats = computeMonthlyStats({}, settings);
+
+        res.json({
+          month,
+          dailyData: {},
+          lastUpdated: null,
+          stats: {
+            monthly: monthlyStats,
+          },
+        });
+      } else {
+        throw error;
+      }
     }
+  } catch (error) {
+    console.error('❌ Erreur lecture données:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -68,39 +99,104 @@ app.post('/api/data/:month', async (req, res) => {
     const { month } = req.params;
     const { dailyData } = req.body;
 
-    // debug log
     console.log('📥 POST reçu pour mois:', month);
     console.log('📦 Body reçu:', req.body);
-    console.log('📊 dailyData extraite:', dailyData);
-    console.log('📊 Type dailyData:', typeof dailyData);
-    
-    // Validation du format mois
+
     if (!/^\d{4}-\d{2}$/.test(month)) {
-        console.log('❌ Format mois invalide');
-        return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
+      console.log('❌ Format mois invalide');
+      return res.status(400).json({ error: 'Format de mois invalide (attendu: YYYY-MM)' });
     }
-    
-    // Validation des données
+
     if (!dailyData || typeof dailyData !== 'object') {
-        console.log('❌ Données dailyData invalides');
-        return res.status(400).json({ error: 'Données dailyData manquantes ou invalides' });
+      console.log('❌ Données dailyData invalides');
+      return res.status(400).json({ error: 'Données dailyData manquantes ou invalides' });
     }
-    
+
+    const settings = await loadSettings();
     const filePath = path.join(DATA_DIR, `${month}.json`);
-    
-    // Structure des données à sauvegarder
+
     const dataToSave = {
       month,
       dailyData,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
     };
-    
+
     await fs.writeFile(filePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
-    
+
+    const monthlyStats = computeMonthlyStats(dailyData, settings);
+
     console.log(`💾 Données sauvegardées: ${month}`);
-    res.json({ success: true, message: 'Données sauvegardées avec succès' });
+    res.json({
+      success: true,
+      message: 'Données sauvegardées avec succès',
+      stats: {
+        monthly: monthlyStats,
+      },
+      lastUpdated: dataToSave.lastUpdated,
+    });
   } catch (error) {
     console.error('❌ Erreur sauvegarde données:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================
+// API: Calculer les statistiques annuelles
+// ========================================
+
+app.get('/api/annual/:year', async (req, res) => {
+  try {
+    const { year } = req.params;
+
+    // Validation de l'année
+    const yearNum = parseInt(year);
+    if (isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
+      return res.status(400).json({ error: 'Année invalide' });
+    }
+
+    console.log(`📊 Calcul des statistiques annuelles pour ${year}`);
+
+    const settings = await loadSettings();
+    const monthsData = [];
+
+    for (let month = 1; month <= 12; month++) {
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const filePath = path.join(DATA_DIR, `${monthKey}.json`);
+
+      try {
+        const data = await fs.readFile(filePath, 'utf-8');
+        const parsedData = JSON.parse(data);
+
+        if (parsedData.dailyData && Object.keys(parsedData.dailyData).length > 0) {
+          monthsData.push({
+            monthKey,
+            dailyData: parsedData.dailyData,
+          });
+        }
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          console.log(`📄 Pas de données pour ${monthKey}`);
+        } else {
+          console.error(`❌ Erreur lecture ${monthKey}:`, error.message);
+        }
+      }
+    }
+
+    const result = computeAnnualStats(monthsData, settings, yearNum);
+
+    if (monthsData.length === 0) {
+      console.log(`❌ Aucune donnée trouvée pour ${year}`);
+    } else {
+      console.log(`✅ Statistiques calculées pour ${year}:`, {
+        totalHours: result.totalHours,
+        totalWorkDays: result.totalWorkDays,
+        monthsWithData: monthsData.length,
+      });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erreur calcul statistiques annuelles:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -108,42 +204,42 @@ app.post('/api/data/:month', async (req, res) => {
 // API: Lire les paramètres
 app.get('/api/settings', async (req, res) => {
   try {
-    const filePath = path.join(DATA_DIR, 'settings.json');
-    
-    const data = await fs.readFile(filePath, 'utf-8');
-    const settings = JSON.parse(data);
-    
+    const settings = await loadSettings();
     console.log('⚙️ Paramètres chargés');
     res.json(settings);
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      // Fichier n'existe pas, retourner paramètres par défaut
-      const defaultSettings = {
-        tarifHoraire: 4.5,
-        tarifMajoration: 1.25,
-        seuilMajoration: 9,
-        fraisRepas: 5,
-        fraisEntretien: 8,
-        joursMenualises: 22
-      };
-      
-      console.log('📄 Paramètres par défaut');
-      res.json(defaultSettings);
-    } else {
-      console.error('❌ Erreur lecture paramètres:', error.message);
-      res.status(500).json({ error: error.message });
-    }
+    console.error('❌ Erreur lecture paramètres:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
 // API: Sauvegarder les paramètres
 app.post('/api/settings', async (req, res) => {
   try {
-    const settings = req.body;
+    const incomingSettings = req.body || {};
+    const settings = { ...incomingSettings };
+
+    if (settings.joursMensualises !== undefined && settings.joursMenualises === undefined) {
+      settings.joursMenualises = settings.joursMensualises;
+    }
+
+    // Validation des paramètres requis (mise à jour)
+    const requiredFields = [
+      // Champs existants
+      'tarifHoraire', 'tarifMajoration', 'seuilMajoration',
+      'fraisRepas', 'fraisEntretien', 'joursMenualises',
+      
+      // Nouveaux champs année complète
+      'moisPourMensualisation', 'semainesPourMensualisation', 
+      'joursTravaillesParSemaine', 'semainesTravailAnnee', 
+      'nbHeuresParSemaine', 'salaireHoraireNet', 
+      'fraisEntretienJournalier', 'fraisRepasParJournee', 
+      'salaireNetPlafond'
+    ];
     
-    // Validation des paramètres requis
-    const requiredFields = ['tarifHoraire', 'tarifMajoration', 'seuilMajoration', 'fraisRepas', 'fraisEntretien', 'joursMenualises'];
-    const missingFields = requiredFields.filter(field => settings[field] === undefined || settings[field] === null);
+    const missingFields = requiredFields.filter(field => 
+      settings[field] === undefined || settings[field] === null
+    );
     
     if (missingFields.length > 0) {
       return res.status(400).json({ 
@@ -151,9 +247,8 @@ app.post('/api/settings', async (req, res) => {
       });
     }
     
-    // Validation des types
-    const numericFields = requiredFields;
-    for (const field of numericFields) {
+    // Validation des types numériques
+    for (const field of requiredFields) {
       if (typeof settings[field] !== 'number' || isNaN(settings[field])) {
         return res.status(400).json({ 
           error: `Le champ ${field} doit être un nombre valide` 
@@ -161,21 +256,109 @@ app.post('/api/settings', async (req, res) => {
       }
     }
     
-    const filePath = path.join(DATA_DIR, 'settings.json');
+    // Validation des règles métier
+    const validationRules = [
+      {
+        field: 'moisPourMensualisation',
+        min: 1, max: 12,
+        message: 'Le nombre de mois pour mensualisation doit être entre 1 et 12'
+      },
+      {
+        field: 'semainesPourMensualisation',
+        min: 1, max: 53,
+        message: 'Le nombre de semaines pour mensualisation doit être entre 1 et 53'
+      },
+      {
+        field: 'joursTravaillesParSemaine',
+        min: 1, max: 7,
+        message: 'Le nombre de jours travaillés par semaine doit être entre 1 et 7'
+      },
+      {
+        field: 'semainesTravailAnnee',
+        min: 1, max: 53,
+        message: 'Le nombre de semaines de travail par année doit être entre 1 et 53'
+      },
+      {
+        field: 'nbHeuresParSemaine',
+        min: 0.5, max: 168,
+        message: 'Le nombre d\'heures par semaine doit être entre 0.5 et 168'
+      },
+      {
+        field: 'salaireHoraireNet',
+        min: 0.01, max: 1000,
+        message: 'Le salaire horaire net doit être entre 0.01 et 1000€'
+      },
+      {
+        field: 'salaireNetPlafond',
+        min: 0.01, max: 1000,
+        message: 'Le salaire net plafond doit être entre 0.01 et 1000€'
+      }
+    ];
+
+    for (const rule of validationRules) {
+      const value = settings[rule.field];
+      if (value < rule.min || value > rule.max) {
+        return res.status(400).json({ error: rule.message });
+      }
+    }
     
-    // Ajouter métadonnées
-    const settingsData = {
-      ...settings,
-      lastUpdated: new Date().toISOString()
-    };
-    
-    await fs.writeFile(filePath, JSON.stringify(settingsData, null, 2), 'utf-8');
-    
-    console.log('⚙️ Paramètres sauvegardés');
-    res.json({ success: true, message: 'Paramètres sauvegardés avec succès' });
+    const { calculatedValues, storedSettings } = await persistSettings(settings);
+
+    console.log('⚙️ Paramètres sauvegardés avec calculs automatiques');
+    res.json({
+      success: true,
+      message: 'Paramètres sauvegardés avec succès',
+      calculatedValues,
+      settings: storedSettings,
+    });
   } catch (error) {
     console.error('❌ Erreur sauvegarde paramètres:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/calculations', async (req, res) => {
+  try {
+    const settings = req.body;
+    
+    // Validation des champs requis pour les calculs
+    const requiredForCalculation = [
+      'moisPourMensualisation', 'semainesPourMensualisation', 
+      'joursTravaillesParSemaine', 'semainesTravailAnnee', 
+      'nbHeuresParSemaine', 'salaireHoraireNet'
+    ];
+    
+    const missingFields = requiredForCalculation.filter(field => 
+      settings[field] === undefined || settings[field] === null || isNaN(settings[field])
+    );
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({ 
+        error: `Champs manquants pour le calcul: ${missingFields.join(', ')}` 
+      });
+    }
+    
+    const calculations = calculateAnneeCompleteValues(settings);
+    
+    console.log('🧮 Calculs temps réel générés');
+    res.json(calculations);
+  } catch (error) {
+    console.error('❌ Erreur calculs temps réel:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/calculations', async (req, res) => {
+  try {
+    const settings = await loadSettings();
+    const calculations = calculateAnneeCompleteValues(settings);
+
+    console.log('🧮 Calculs récupérés depuis les paramètres sauvegardés');
+    res.json(calculations);
+  } catch (error) {
+    console.error('❌ Erreur récupération calculs:', error.message);
+    const fallback = calculateAnneeCompleteValues(DEFAULT_SETTINGS);
+    res.status(500).json({ error: error.message, fallback });
   }
 });
 
@@ -244,11 +427,9 @@ app.get('/api/export', async (req, res) => {
     
     // Charger les paramètres
     try {
-      const settingsPath = path.join(DATA_DIR, 'settings.json');
-      const settingsData = await fs.readFile(settingsPath, 'utf-8');
-      exportData.settings = JSON.parse(settingsData);
+      exportData.settings = await loadSettings();
     } catch (error) {
-      console.log('⚠️ Aucun paramètre trouvé pour l\'export');
+      console.log('⚠️ Impossible de charger les paramètres pour l\'export:', error.message);
     }
     
     // Charger tous les mois
@@ -347,50 +528,41 @@ app.get('/api/stats', async (req, res) => {
   try {
     const files = await fs.readdir(DATA_DIR);
     const dataFiles = files.filter(file => file.match(/^\d{4}-\d{2}\.json$/));
-    
+
     let totalDays = 0;
     let totalHours = 0;
     const monthsData = [];
-    
+
+    const settings = await loadSettings();
+
     for (const file of dataFiles) {
       const monthKey = file.replace('.json', '');
       const filePath = path.join(DATA_DIR, file);
-      
+
       try {
         const monthData = await fs.readFile(filePath, 'utf-8');
         const parsed = JSON.parse(monthData);
-        
-        if (parsed.dailyData) {
-          const monthDays = Object.keys(parsed.dailyData).length;
+        const dailyData = parsed.dailyData || {};
+
+        if (Object.keys(dailyData).length > 0) {
+          const monthDays = Object.keys(dailyData).length;
+          const monthStats = computeMonthlyStats(dailyData, settings);
+
           totalDays += monthDays;
-          
-          // Calculer les heures pour ce mois
-          let monthHours = 0;
-          Object.values(parsed.dailyData).forEach(day => {
-            if (day.depot && day.reprise) {
-              // Calcul des heures
-              const [startH, startM] = day.depot.split(':').map(Number);
-              const [endH, endM] = day.reprise.split(':').map(Number);
-              const startMinutes = startH * 60 + startM;
-              const endMinutes = endH * 60 + endM;
-              let totalMinutes = endMinutes - startMinutes;
-              if (totalMinutes < 0) totalMinutes += 24 * 60;
-              monthHours += totalMinutes / 60;
-            }
-          });
-          
-          totalHours += monthHours;
+          totalHours += monthStats.totalHours;
+
           monthsData.push({
             month: monthKey,
             days: monthDays,
-            hours: Math.round(monthHours * 10) / 10
+            hours: Math.round(monthStats.totalHours * 10) / 10,
+            salary: monthStats.totalSalary,
           });
         }
       } catch (error) {
         console.error(`❌ Erreur stats ${file}:`, error.message);
       }
     }
-    
+
     const stats = {
       totalMonths: dataFiles.length,
       totalDays,
