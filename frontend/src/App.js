@@ -68,6 +68,31 @@ const App = () => {
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const modifierKey = isMac ? 'Cmd' : 'Ctrl';
 
+  const getEcartBadgeClasses = (value) => {
+    if (!Number.isFinite(value)) {
+      return 'bg-gray-100 text-gray-500';
+    }
+    if (value > 0) {
+      return 'bg-green-100 text-green-700';
+    }
+    if (value < 0) {
+      return 'bg-red-100 text-red-700';
+    }
+    return 'bg-gray-100 text-gray-700';
+  };
+
+  const formatSignedValue = (value, digits = 0, suffix = '') => {
+    if (!Number.isFinite(value)) {
+      const zeroValue = (0).toFixed(digits);
+      return `${zeroValue}${suffix}`;
+    }
+
+    const formatted = value.toFixed(digits);
+    const sign = value > 0 ? '+' : '';
+
+    return `${sign}${formatted}${suffix}`;
+  };
+
   // get holidays
   const loadHolidays = async (year) => {
     try {
@@ -733,13 +758,42 @@ const App = () => {
                         <div className="space-y-1 text-xs">
                           <div className="flex justify-between">
                             <span className="text-blue-700">Jours mensualisés:</span>
-                            <span className="font-medium text-blue-900">{monthlyStats.anneeComplete.nombreJoursMensualisation}</span>
+                            <span className="font-medium text-blue-900">
+                              {monthlyStats.anneeComplete.nombreJoursMensualisation}
+                            </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-blue-700">Salaire mensualisé:</span>
-                            <span className="font-medium text-blue-900">{monthlyStats.anneeComplete.salaireNetMensualise.toFixed(2)}€</span>
+                            <span className="font-medium text-blue-900">
+                              {monthlyStats.anneeComplete.salaireNetMensualise.toFixed(2)}€
+                            </span>
                           </div>
                         </div>
+
+                        {monthlyStats.ecartMensualise && (
+                          <div className="mt-3 space-y-1 text-xs border-t border-blue-100 pt-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-blue-700">Écart jours vs mensu:</span>
+                              <span
+                                className={`font-semibold px-2 py-0.5 rounded-full ${getEcartBadgeClasses(
+                                  monthlyStats.ecartMensualise.ecartJours
+                                )}`}
+                              >
+                                {formatSignedValue(monthlyStats.ecartMensualise.ecartJours, 0, '\u00a0j')}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-blue-700">Écart salaire:</span>
+                              <span
+                                className={`font-semibold px-2 py-0.5 rounded-full ${getEcartBadgeClasses(
+                                  monthlyStats.ecartMensualise.ecartSalaire
+                                )}`}
+                              >
+                                {formatSignedValue(monthlyStats.ecartMensualise.ecartSalaire, 2, '\u00a0€')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
