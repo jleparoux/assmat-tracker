@@ -500,6 +500,23 @@ const App = () => {
   console.log('📅 Mois affiché:', currentDate.toLocaleDateString('fr-FR', { month: 'long' }));
   console.log('📈 Statistiques mensuelles (backend):', monthlyStats);
 
+  const weeklyHours = Number(settings?.nbHeuresParSemaine) || 0;
+  const daysPerWeek = Number(settings?.joursTravaillesParSemaine) || 0;
+  const totalHours = Number(monthlyStats?.totalHours) || 0;
+  const workDays = Number(monthlyStats?.workDays) || 0;
+  const contractDailyHours = daysPerWeek > 0 ? weeklyHours / daysPerWeek : 0;
+  const rawContractMonthlyHours = Number(monthlyStats?.anneeComplete?.nombreHeuresMensualisees);
+  const contractMonthlyDays = Number(monthlyStats?.anneeComplete?.nombreJoursMensualisation) || 0;
+  const contractMonthlyHours = Number.isFinite(rawContractMonthlyHours)
+    ? rawContractMonthlyHours
+    : contractMonthlyDays > 0
+      ? contractDailyHours * contractMonthlyDays
+      : 0;
+  const hoursDelta = totalHours - contractMonthlyHours;
+  const workedWeeks = monthlyStats && daysPerWeek > 0 ? workDays / daysPerWeek : 0;
+  const meanHoursPerWeek = workedWeeks > 0 ? totalHours / workedWeeks : 0;
+  const meanHoursPerDay = Number(monthlyStats?.meanHoursPerDay) || 0;
+
   useEffect(() => {
     if (showAnnualView) {
       loadAnnualData(selectedYear);
@@ -737,19 +754,39 @@ const App = () => {
                   {/* Stats mensuelles */}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Heures travaillées:</span>
-                      <span className="font-medium">{monthlyStats.totalHours.toFixed(1)}h</span>
+                      <span className="text-gray-600">Heures réelles:</span>
+                      <span className="font-medium">{totalHours.toFixed(1)}h</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Jours travaillés:</span>
-                      <span className="font-medium">{monthlyStats.workDays}</span>
+                      <span className="text-gray-600">Heures contractuelles:</span>
+                      <span className="font-medium">{contractMonthlyHours.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Écart:</span>
+                      <span
+                        className={`font-semibold px-2 py-0.5 rounded-full ${getEcartBadgeClasses(hoursDelta)}`}
+                      >
+                        {formatSignedValue(hoursDelta, 1, '\u00a0h')}
+                      </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Salaire brut:</span>
-                      <span className="font-medium">{monthlyStats.totalSalary.toFixed(2)}€</span>
+                      <span className="text-gray-600">Moyenne réelle / jour:</span>
+                      <span className="font-medium">{meanHoursPerDay.toFixed(1)}h</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Moyenne réelle / semaine:</span>
+                      <span className="font-medium">{meanHoursPerWeek.toFixed(1)}h</span>
+                    </div>
+                  </div>
 
-                    <hr className="my-3" />
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Salaire mensualisé:</span>
+                    <span className="font-medium">
+                      {(Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0).toFixed(2)}€
+                    </span>
+                  </div>
+
+                  <hr className="my-3" />
 
                     {/* infos année complète */}
                     {monthlyStats.anneeComplete && (
@@ -809,7 +846,7 @@ const App = () => {
                       <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-semibold text-gray-900">Total (année complète):</span>
+                      <span className="font-semibold text-gray-900">Total (mensualisé + frais):</span>
                       <span className="font-bold text-green-600">
                         {calculateTotalAnneeComplete(monthlyStats).toFixed(2)}€
                       </span>
