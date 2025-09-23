@@ -777,16 +777,14 @@ const App = () => {
                       <span className="text-gray-600">Moyenne réelle / semaine:</span>
                       <span className="font-medium">{meanHoursPerWeek.toFixed(1)}h</span>
                     </div>
-                  </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Salaire mensualisé:</span>
+                      <span className="font-medium">
+                        {(Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0).toFixed(2)}€
+                      </span>
+                    </div>
 
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Salaire mensualisé:</span>
-                    <span className="font-medium">
-                      {(Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0).toFixed(2)}€
-                    </span>
-                  </div>
-
-                  <hr className="my-3" />
+                    <hr className="my-3" />
 
                     {/* infos année complète */}
                     {monthlyStats.anneeComplete && (
