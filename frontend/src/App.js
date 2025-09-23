@@ -833,12 +833,16 @@ const App = () => {
                   <span>{settings.salaireHoraireNet}€</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Heures/semaine:</span>
-                  <span>{settings.nbHeuresParSemaine}h</span>
+                  <span className="text-gray-600">Heures / mois:</span>
+                  <span>{calculatedValues.nombreHeuresMensualisees}h</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Jours/semaine:</span>
                   <span>{settings.joursTravaillesParSemaine}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Heures/semaine:</span>
+                  <span>{settings.nbHeuresParSemaine}h</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Seuil majoration:</span>
