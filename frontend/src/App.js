@@ -516,6 +516,9 @@ const App = () => {
   const workedWeeks = monthlyStats && daysPerWeek > 0 ? workDays / daysPerWeek : 0;
   const meanHoursPerWeek = workedWeeks > 0 ? totalHours / workedWeeks : 0;
   const meanHoursPerDay = Number(monthlyStats?.meanHoursPerDay) || 0;
+  const theoreticalWeeklyHours = Number.isFinite(weeklyHours) && Number.isFinite(workDays)
+    ? weeklyHours * workDays
+    : 0;
 
   useEffect(() => {
     if (showAnnualView) {
@@ -776,6 +779,10 @@ const App = () => {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Moyenne réelle / semaine:</span>
                       <span className="font-medium">{meanHoursPerWeek.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Heures théoriques / semaine:</span>
+                      <span className="font-medium">{theoreticalWeeklyHours.toFixed(1)}h</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Salaire mensualisé:</span>
