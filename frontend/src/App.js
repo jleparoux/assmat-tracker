@@ -512,14 +512,14 @@ const App = () => {
     : contractMonthlyDays > 0
       ? contractDailyHours * contractMonthlyDays
       : 0;
-  const hoursDelta = totalHours - contractMonthlyHours;
+  const theoreticalWeeklyHours = Number.isFinite(contractDailyHours) && Number.isFinite(workDays)
+    ? contractDailyHours * workDays
+    : 0;
+  const hoursDelta = totalHours - theoreticalWeeklyHours;
   const workedWeeks = monthlyStats && daysPerWeek > 0 ? workDays / daysPerWeek : 0;
   const meanHoursPerWeek = workedWeeks > 0 ? totalHours / workedWeeks : 0;
   const meanHoursPerDay = Number(monthlyStats?.meanHoursPerDay) || 0;
-  const theoreticalWeeklyHours = Number.isFinite(weeklyHours) && Number.isFinite(workDays)
-    ? weeklyHours * workDays
-    : 0;
-
+  
   useEffect(() => {
     if (showAnnualView) {
       loadAnnualData(selectedYear);
@@ -757,12 +757,16 @@ const App = () => {
                   {/* Stats mensuelles */}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Heures réelles:</span>
-                      <span className="font-medium">{totalHours.toFixed(1)}h</span>
-                    </div>
-                    <div className="flex justify-between">
                       <span className="text-gray-600">Heures contractuelles:</span>
                       <span className="font-medium">{contractMonthlyHours.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Heures théoriques:</span>
+                      <span className="font-medium">{theoreticalWeeklyHours.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Heures réelles:</span>
+                      <span className="font-medium">{totalHours.toFixed(1)}h</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Écart:</span>
@@ -780,68 +784,15 @@ const App = () => {
                       <span className="text-gray-600">Moyenne réelle / semaine:</span>
                       <span className="font-medium">{meanHoursPerWeek.toFixed(1)}h</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Heures théoriques / semaine:</span>
-                      <span className="font-medium">{theoreticalWeeklyHours.toFixed(1)}h</span>
-                    </div>
+
+                    <hr className="my-3" />
+
                     <div className="flex justify-between">
                       <span className="text-gray-600">Salaire mensualisé:</span>
                       <span className="font-medium">
                         {(Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0).toFixed(2)}€
                       </span>
                     </div>
-
-                    <hr className="my-3" />
-
-                    {/* infos année complète */}
-                    {monthlyStats.anneeComplete && (
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <h4 className="font-medium text-blue-900 mb-2">Méthode année complète</h4>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">Jours mensualisés:</span>
-                            <span className="font-medium text-blue-900">
-                              {monthlyStats.anneeComplete.nombreJoursMensualisation}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">Salaire mensualisé:</span>
-                            <span className="font-medium text-blue-900">
-                              {monthlyStats.anneeComplete.salaireNetMensualise.toFixed(2)}€
-                            </span>
-                          </div>
-                        </div>
-
-                        {monthlyStats.ecartMensualise && (
-                          <div className="mt-3 space-y-1 text-xs border-t border-blue-100 pt-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-blue-700">Écart jours vs mensu:</span>
-                              <span
-                                className={`font-semibold px-2 py-0.5 rounded-full ${getEcartBadgeClasses(
-                                  monthlyStats.ecartMensualise.ecartJours
-                                )}`}
-                              >
-                                {formatSignedValue(monthlyStats.ecartMensualise.ecartJours, 0, '\u00a0j')}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-blue-700">Écart salaire:</span>
-                              <span
-                                className={`font-semibold px-2 py-0.5 rounded-full ${getEcartBadgeClasses(
-                                  monthlyStats.ecartMensualise.ecartSalaire
-                                )}`}
-                              >
-                                {formatSignedValue(monthlyStats.ecartMensualise.ecartSalaire, 2, '\u00a0€')}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <hr className="my-3" />
-
-                    {/* Autres stats mensuelles */}
                     <div className="flex justify-between">
                       <span className="text-gray-600">Frais repas:</span>
                       <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€</span>
