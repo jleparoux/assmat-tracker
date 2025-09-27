@@ -68,6 +68,31 @@ const App = () => {
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const modifierKey = isMac ? 'Cmd' : 'Ctrl';
 
+  const getEcartBadgeClasses = (value) => {
+    if (!Number.isFinite(value)) {
+      return 'bg-gray-100 text-gray-500';
+    }
+    if (value > 0) {
+      return 'bg-green-100 text-green-700';
+    }
+    if (value < 0) {
+      return 'bg-red-100 text-red-700';
+    }
+    return 'bg-gray-100 text-gray-700';
+  };
+
+  const formatSignedValue = (value, digits = 0, suffix = '') => {
+    if (!Number.isFinite(value)) {
+      const zeroValue = (0).toFixed(digits);
+      return `${zeroValue}${suffix}`;
+    }
+
+    const formatted = value.toFixed(digits);
+    const sign = value > 0 ? '+' : '';
+
+    return `${sign}${formatted}${suffix}`;
+  };
+
   // get holidays
   const loadHolidays = async (year) => {
     try {
@@ -475,6 +500,26 @@ const App = () => {
   console.log('📅 Mois affiché:', currentDate.toLocaleDateString('fr-FR', { month: 'long' }));
   console.log('📈 Statistiques mensuelles (backend):', monthlyStats);
 
+  const weeklyHours = Number(settings?.nbHeuresParSemaine) || 0;
+  const daysPerWeek = Number(settings?.joursTravaillesParSemaine) || 0;
+  const totalHours = Number(monthlyStats?.totalHours) || 0;
+  const workDays = Number(monthlyStats?.workDays) || 0;
+  const contractDailyHours = daysPerWeek > 0 ? weeklyHours / daysPerWeek : 0;
+  const rawContractMonthlyHours = Number(monthlyStats?.anneeComplete?.nombreHeuresMensualisees);
+  const contractMonthlyDays = Number(monthlyStats?.anneeComplete?.nombreJoursMensualisation) || 0;
+  const contractMonthlyHours = Number.isFinite(rawContractMonthlyHours)
+    ? rawContractMonthlyHours
+    : contractMonthlyDays > 0
+      ? contractDailyHours * contractMonthlyDays
+      : 0;
+  const theoreticalWeeklyHours = Number.isFinite(contractDailyHours) && Number.isFinite(workDays)
+    ? contractDailyHours * workDays
+    : 0;
+  const hoursDelta = totalHours - theoreticalWeeklyHours;
+  const workedWeeks = monthlyStats && daysPerWeek > 0 ? workDays / daysPerWeek : 0;
+  const meanHoursPerWeek = workedWeeks > 0 ? totalHours / workedWeeks : 0;
+  const meanHoursPerDay = Number(monthlyStats?.meanHoursPerDay) || 0;
+  
   useEffect(() => {
     if (showAnnualView) {
       loadAnnualData(selectedYear);
@@ -712,40 +757,42 @@ const App = () => {
                   {/* Stats mensuelles */}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Heures travaillées:</span>
-                      <span className="font-medium">{monthlyStats.totalHours.toFixed(1)}h</span>
+                      <span className="text-gray-600">Heures contractuelles:</span>
+                      <span className="font-medium">{contractMonthlyHours.toFixed(1)}h</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Jours travaillés:</span>
-                      <span className="font-medium">{monthlyStats.workDays}</span>
+                      <span className="text-gray-600">Heures théoriques:</span>
+                      <span className="font-medium">{theoreticalWeeklyHours.toFixed(1)}h</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Salaire brut:</span>
-                      <span className="font-medium">{monthlyStats.totalSalary.toFixed(2)}€</span>
+                      <span className="text-gray-600">Heures réelles:</span>
+                      <span className="font-medium">{totalHours.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Écart:</span>
+                      <span
+                        className={`font-semibold px-2 py-0.5 rounded-full ${getEcartBadgeClasses(hoursDelta)}`}
+                      >
+                        {formatSignedValue(hoursDelta, 1, '\u00a0h')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Moyenne réelle / jour:</span>
+                      <span className="font-medium">{meanHoursPerDay.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Moyenne réelle / semaine:</span>
+                      <span className="font-medium">{meanHoursPerWeek.toFixed(1)}h</span>
                     </div>
 
                     <hr className="my-3" />
 
-                    {/* infos année complète */}
-                    {monthlyStats.anneeComplete && (
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <h4 className="font-medium text-blue-900 mb-2">Méthode année complète</h4>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">Jours mensualisés:</span>
-                            <span className="font-medium text-blue-900">{monthlyStats.anneeComplete.nombreJoursMensualisation}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">Salaire mensualisé:</span>
-                            <span className="font-medium text-blue-900">{monthlyStats.anneeComplete.salaireNetMensualise.toFixed(2)}€</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <hr className="my-3" />
-
-                    {/* Autres stats mensuelles */}
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Salaire mensualisé:</span>
+                      <span className="font-medium">
+                        {(Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0).toFixed(2)}€
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Frais repas:</span>
                       <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€</span>
@@ -755,7 +802,7 @@ const App = () => {
                       <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-semibold text-gray-900">Total (année complète):</span>
+                      <span className="font-semibold text-gray-900">Total (mensualisé + frais):</span>
                       <span className="font-bold text-green-600">
                         {calculateTotalAnneeComplete(monthlyStats).toFixed(2)}€
                       </span>
@@ -779,12 +826,16 @@ const App = () => {
                   <span>{settings.salaireHoraireNet}€</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Heures/semaine:</span>
-                  <span>{settings.nbHeuresParSemaine}h</span>
+                  <span className="text-gray-600">Heures / mois:</span>
+                  <span>{calculatedValues.nombreHeuresMensualisees}h</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Jours/semaine:</span>
                   <span>{settings.joursTravaillesParSemaine}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Heures/semaine:</span>
+                  <span>{settings.nbHeuresParSemaine}h</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Seuil majoration:</span>
