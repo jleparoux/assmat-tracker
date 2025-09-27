@@ -516,6 +516,9 @@ const App = () => {
     ? contractDailyHours * workDays
     : 0;
   const hoursDelta = totalHours - theoreticalWeeklyHours;
+  const hourlyRate = Number(settings?.tarifHoraire) || 0;
+  const majorationRate = Number(settings?.tarifMajoration) || 0;
+  const majoredSalary = hoursDelta > 0 ? hoursDelta * hourlyRate * majorationRate : 0;
   const workedWeeks = monthlyStats && daysPerWeek > 0 ? workDays / daysPerWeek : 0;
   const meanHoursPerWeek = workedWeeks > 0 ? totalHours / workedWeeks : 0;
   const meanHoursPerDay = Number(monthlyStats?.meanHoursPerDay) || 0;
@@ -792,6 +795,10 @@ const App = () => {
                       <span className="font-medium">
                         {(Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0).toFixed(2)}€
                       </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Salaire majoré:</span>
+                      <span className="font-medium">{majoredSalary.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Frais repas:</span>
