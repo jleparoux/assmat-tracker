@@ -172,6 +172,7 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
   let totalFraisRepas = 0;
   let totalFraisEntretien = 0;
   let totalMajorationSalaire = 0;
+  let totalPositiveHoursDelta = 0;
 
   const monthlyDetails = months.map(({ monthKey, dailyData }) => {
     const stats = computeMonthlyStats(dailyData, settings);
@@ -189,13 +190,16 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
     totalCongeParentDays += stats.congeParentDays;
     totalFraisRepas += stats.fraisRepasTotal;
     totalFraisEntretien += stats.fraisEntretienTotal;
+    const monthlyPositiveHoursDelta = stats.ecartHeures > 0 ? stats.ecartHeures : 0;
     totalMajorationSalaire += stats.majorationSalaire || 0;
+    totalPositiveHoursDelta += monthlyPositiveHoursDelta;
 
     return {
       month: monthNumber,
       monthKey,
       monthName,
       hours: stats.totalHours,
+      positiveHoursDelta: round(monthlyPositiveHoursDelta, 2),
       salary: stats.totalSalary,
       workDays: stats.workDays,
       congeDays: stats.congeDays,
@@ -220,6 +224,7 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
     totalFraisRepas: round(totalFraisRepas, 2),
     totalFraisEntretien: round(totalFraisEntretien, 2),
     totalMajorationSalaire: round(totalMajorationSalaire, 2),
+    totalPositiveHoursDelta: round(totalPositiveHoursDelta, 2),
     grandTotal: round(grandTotal, 2),
     monthlyDetails,
     averageHoursPerMonth: round(totalHours / 12, 2),
