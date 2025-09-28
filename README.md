@@ -48,23 +48,12 @@
 
 ## 🏗️ Architecture technique
 
-```
-assmat-tracker/
-├── 📁 frontend/          # Interface React + Tailwind CSS
-│   ├── src/app.js        # Application principale
-│   ├── package.json      # Dépendances frontend
-│   └── Dockerfile        # Build React optimisé
-├── 📁 backend/           # API Express minimaliste  
-│   ├── server.js         # Serveur REST + serving statique
-│   ├── package.json      # Dépendances Node.js
-│   └── Dockerfile        # Runtime Node.js
-├── 📁 data/              # Stockage JSON persistant
-│   ├── 2025-01.json      # Données janvier 2025
-│   ├── 2025-02.json      # Données février 2025
-│   └── settings.json     # Paramètres globaux
-├── docker-compose.yml    # Déploiement complet
-└── README.md            # Documentation
-```
+Le dépôt est structuré autour de quelques briques principales :
+
+- **frontend/** : application React et Tailwind qui propose l'interface de suivi.
+- **backend/** : API Express qui expose les données et sert les assets construits.
+- **data/** : fichiers JSON persistants pour les mois et la configuration.
+- **docker-compose.yml** : orchestration des services pour un déploiement rapide.
 
 ### Stack technique
 - **Frontend** : React 18, Tailwind CSS, Lucide Icons
@@ -209,61 +198,11 @@ GET /api/months
 # Retourne: ["2025-01", "2025-02", ...]
 ```
 
-## 📊 Utilisation quotidienne
+## 💡 Usage
 
-### 1. Saisie des heures
-- Cliquer sur une date du calendrier
-- Saisir l'heure de **dépôt** et de **reprise**
-- L'application calcule automatiquement les heures et majorations
-- Sauvegarde automatique après 1 seconde
+Au quotidien, il suffit de saisir les heures de dépôt/reprise, d'indiquer les congés éventuels et de consulter les récapitulatifs mensuels ou annuels pour suivre les heures et salaires. Les exports/imports JSON permettent de partager ou restaurer rapidement les données.
 
-### 2. Gestion des congés  
-- Sélectionner **"Congé assistant maternel"** = payé
-- Sélectionner **"Pas de dépôt (congé parent)"** = payé
-- Les congés sont comptabilisés dans les calculs
-
-### 3. Consultation des récaps
-- **Récap mensuel** : panneau de droite, mis à jour en temps réel
-- **Récap annuel** : bouton "Récap Annuel" → vue complète avec navigation années
-
-### 4. Export/Import
-- **Export** : bouton vert pour télécharger le JSON du mois
-- **Import** : bouton orange pour charger un fichier JSON
-- **Format** : compatible avec les sauvegardes automatiques
-
-## 🔧 Maintenance
-
-### Sauvegarde des données
-```bash
-# Backup du dossier data complet
-cp -r data/ backup-$(date +%Y%m%d)/
-
-# Restauration 
-cp -r backup-YYYYMMDD/ data/
-docker-compose restart
-```
-
-### Logs et monitoring
-```bash
-# Logs Docker
-docker-compose logs -f
-
-# Espace disque des données
-du -sh data/
-
-# Santé du container
-docker-compose ps
-```
-
-### Mise à jour
-```bash
-# Pull des dernières modifications
-git pull origin main
-
-# Rebuild et redémarrage
-docker-compose down
-docker-compose up -d --build
-```
+> Pour les procédures détaillées (sauvegardes, surveillance, mises à jour, etc.), consultez le [guide d'utilisation complet](docs/usage.md).
 
 ## 🤝 Contribution
 
