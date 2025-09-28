@@ -811,7 +811,7 @@ const App = () => {
                       <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-semibold text-gray-900">Total (mensualisé + frais):</span>
+                      <span className="font-semibold text-gray-900">Total (mensualisé + majoration + frais):</span>
                       <span className="font-bold text-green-600">
                         {calculateTotalAnneeComplete(monthlyStats).toFixed(2)}€
                       </span>
