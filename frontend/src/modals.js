@@ -259,12 +259,20 @@ export function AnnualView({
 
   // Calcul du total mensualisé avec frais
   const calculateTotalMensualiseWithFrais = () => {
-    if (mensualiseStats?.totalWithFrais !== undefined) {
-      return mensualiseStats.totalWithFrais;
-    }
     const salaireMensualise = calculateAnnualMensualise();
-    const totalFrais = annualStats ? (annualStats.totalFraisRepas + annualStats.totalFraisEntretien) : 0;
-    return salaireMensualise + totalFrais;
+    const totalFrais = annualStats
+      ? Number(annualStats.totalFraisRepas ?? 0) + Number(annualStats.totalFraisEntretien ?? 0)
+      : 0;
+    const totalMajoration = annualStats ? Number(annualStats.totalMajorationSalaire ?? 0) : 0;
+
+    if (mensualiseStats?.totalWithFrais !== undefined) {
+      const backendTotal = Number(mensualiseStats.totalWithFrais);
+      if (Number.isFinite(backendTotal)) {
+        return backendTotal;
+      }
+    }
+
+    return Number(salaireMensualise) + totalMajoration + totalFrais;
   };
 
   // Fonction pour calculer le salaire mensualisé par mois
@@ -342,7 +350,7 @@ export function AnnualView({
                 </div>
                 <div className="bg-orange-50 p-4 rounded-lg">
                   <div className="text-lg font-bold text-orange-900">{calculateTotalMensualiseWithFrais().toFixed(2)}€</div>
-                  <div className="text-orange-700">Total mensualisé + frais</div>
+                  <div className="text-orange-700">Total mensualisé + majoration + frais</div>
                 </div>
               </div>
 
@@ -357,35 +365,43 @@ export function AnnualView({
                       <tr>
                         <th className="px-3 py-3 text-left text-sm font-medium text-gray-900">Mois</th>
                         <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Heures</th>
+                        <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Écart (h)</th>
                         <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Jours</th>
                         <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">CP AM</th>
-                        <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">CP Parent</th>
-                        <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Salaire Réel</th>
                         <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Salaire Mensuel.</th>
+                        <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Salaire Majoration</th>
                         <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Frais Repas</th>
                         <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Frais Entretien</th>
-                        <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Total Réel</th>
                         <th className="px-3 py-3 text-right text-sm font-medium text-gray-900">Total Mensuel.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {annualStats.monthlyDetails.map((month) => {
                         const salaireMensualise = getMonthlySalaireMensualise();
-                        const totalMensualise = salaireMensualise + month.fraisRepas + month.fraisEntretien;
-                        
+                        const positiveHoursDelta = Number.isFinite(month.positiveHoursDelta)
+                          ? month.positiveHoursDelta
+                          : Math.max(month.stats?.ecartHeures || 0, 0);
+                        const majoredSalary = Number.isFinite(month.majorationSalaire)
+                          ? month.majorationSalaire
+                          : Math.max(month.stats?.majorationSalaire || 0, 0);
+                        const totalMensuel =
+                          Number(salaireMensualise) +
+                          Number(majoredSalary) +
+                          Number(month.fraisRepas ?? 0) +
+                          Number(month.fraisEntretien ?? 0);
+
                         return (
                           <tr key={month.month} className="hover:bg-gray-50">
                             <td className="px-3 py-3 text-sm text-gray-900 capitalize font-medium">{month.monthName}</td>
                             <td className="px-3 py-3 text-sm text-gray-900 text-right">{month.hours.toFixed(1)}h</td>
+                            <td className="px-3 py-3 text-sm text-gray-900 text-right">{positiveHoursDelta.toFixed(2)}h</td>
                             <td className="px-3 py-3 text-sm text-gray-900 text-right">{month.workDays}</td>
                             <td className="px-3 py-3 text-sm text-red-600 text-right font-medium">{month.congeDays}</td>
-                            <td className="px-3 py-3 text-sm text-yellow-600 text-right font-medium">{month.congeParentDays}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900 text-right">{month.salary.toFixed(2)}€</td>
                             <td className="px-3 py-3 text-sm text-indigo-600 text-right font-medium">{salaireMensualise.toFixed(2)}€</td>
+                            <td className="px-3 py-3 text-sm text-purple-600 text-right font-medium">{majoredSalary.toFixed(2)}€</td>
                             <td className="px-3 py-3 text-sm text-gray-600 text-right">{month.fraisRepas.toFixed(2)}€</td>
                             <td className="px-3 py-3 text-sm text-gray-600 text-right">{month.fraisEntretien.toFixed(2)}€</td>
-                            <td className="px-3 py-3 text-sm text-gray-900 text-right font-medium">{month.total.toFixed(2)}€</td>
-                            <td className="px-3 py-3 text-sm text-orange-600 text-right font-bold">{totalMensualise.toFixed(2)}€</td>
+                            <td className="px-3 py-3 text-sm text-orange-600 text-right font-bold">{totalMensuel.toFixed(2)}€</td>
                           </tr>
                         );
                       })}
@@ -394,14 +410,13 @@ export function AnnualView({
                       <tr>
                         <td className="px-3 py-3 text-sm font-bold text-gray-900">TOTAL</td>
                         <td className="px-3 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.totalHours}h</td>
+                        <td className="px-3 py-3 text-sm font-bold text-gray-900 text-right">{Number(annualStats.totalPositiveHoursDelta ?? 0).toFixed(2)}h</td>
                         <td className="px-3 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.totalWorkDays}</td>
                         <td className="px-3 py-3 text-sm font-bold text-red-700 text-right">{annualStats.totalCongeDays}</td>
-                        <td className="px-3 py-3 text-sm font-bold text-yellow-700 text-right">{annualStats.totalCongeParentDays}</td>
-                        <td className="px-3 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.totalSalary.toFixed(2)}€</td>
                         <td className="px-3 py-3 text-sm font-bold text-indigo-700 text-right">{calculateAnnualMensualise().toFixed(2)}€</td>
+                        <td className="px-3 py-3 text-sm font-bold text-purple-700 text-right">{Number(annualStats.totalMajorationSalaire ?? 0).toFixed(2)}€</td>
                         <td className="px-3 py-3 text-sm font-bold text-gray-700 text-right">{annualStats.totalFraisRepas.toFixed(2)}€</td>
                         <td className="px-3 py-3 text-sm font-bold text-gray-700 text-right">{annualStats.totalFraisEntretien.toFixed(2)}€</td>
-                        <td className="px-3 py-3 text-sm font-bold text-gray-900 text-right">{annualStats.grandTotal.toFixed(2)}€</td>
                         <td className="px-3 py-3 text-sm font-bold text-orange-700 text-right">{calculateTotalMensualiseWithFrais().toFixed(2)}€</td>
                       </tr>
                     </tfoot>

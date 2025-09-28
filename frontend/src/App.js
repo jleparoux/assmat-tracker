@@ -512,10 +512,15 @@ const App = () => {
     : contractMonthlyDays > 0
       ? contractDailyHours * contractMonthlyDays
       : 0;
-  const theoreticalWeeklyHours = Number.isFinite(contractDailyHours) && Number.isFinite(workDays)
-    ? contractDailyHours * workDays
-    : 0;
-  const hoursDelta = totalHours - theoreticalWeeklyHours;
+  const theoreticalWeeklyHours = Number.isFinite(monthlyStats?.heuresTheoriques)
+    ? Number(monthlyStats.heuresTheoriques)
+    : Number.isFinite(contractDailyHours) && Number.isFinite(workDays)
+      ? contractDailyHours * workDays
+      : 0;
+  const hoursDelta = Number.isFinite(monthlyStats?.ecartHeures)
+    ? Number(monthlyStats.ecartHeures)
+    : totalHours - theoreticalWeeklyHours;
+  const majoredSalary = Number(monthlyStats?.majorationSalaire) || 0;
   const workedWeeks = monthlyStats && daysPerWeek > 0 ? workDays / daysPerWeek : 0;
   const meanHoursPerWeek = workedWeeks > 0 ? totalHours / workedWeeks : 0;
   const meanHoursPerDay = Number(monthlyStats?.meanHoursPerDay) || 0;
@@ -794,6 +799,10 @@ const App = () => {
                       </span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-gray-600">Salaire majoré:</span>
+                      <span className="font-medium">{majoredSalary.toFixed(2)}€</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-gray-600">Frais repas:</span>
                       <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€</span>
                     </div>
@@ -802,7 +811,7 @@ const App = () => {
                       <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-semibold text-gray-900">Total (mensualisé + frais):</span>
+                      <span className="font-semibold text-gray-900">Total (mensualisé + majoration + frais):</span>
                       <span className="font-bold text-green-600">
                         {calculateTotalAnneeComplete(monthlyStats).toFixed(2)}€
                       </span>

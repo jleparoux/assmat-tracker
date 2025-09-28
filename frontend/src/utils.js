@@ -218,9 +218,16 @@ export const getCalculationFormulas = (settings) => {
 };
 
 export const calculateTotalAnneeComplete = (monthlyStats) => {
-  return monthlyStats.anneeComplete.salaireNetMensualise +
-         monthlyStats.fraisRepasTotal +
-         monthlyStats.fraisEntretienTotal;
+  if (!monthlyStats) {
+    return 0;
+  }
+
+  const salaireMensualise = Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0;
+  const majorationSalaire = Number(monthlyStats?.majorationSalaire) || 0;
+  const fraisRepasTotal = Number(monthlyStats?.fraisRepasTotal) || 0;
+  const fraisEntretienTotal = Number(monthlyStats?.fraisEntretienTotal) || 0;
+
+  return salaireMensualise + majorationSalaire + fraisRepasTotal + fraisEntretienTotal;
 };
 
 // ============================================
