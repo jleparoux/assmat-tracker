@@ -119,6 +119,17 @@ const computeMonthlyStats = (dailyData = {}, rawSettings = {}) => {
   const totalWithFrais = totalSalary + fraisRepasTotal + fraisEntretienTotal;
   const meanHoursPerDay = workDays > 0 ? totalHours / workDays : 0;
 
+  const joursTravaillesParSemaine = settings.joursTravaillesParSemaine ?? 0;
+  const nbHeuresParSemaine = settings.nbHeuresParSemaine ?? 0;
+  const hourlyRate = settings.tarifHoraire ?? 0;
+  const majorationRate = settings.tarifMajoration ?? 0;
+
+  const contractDailyHours =
+    joursTravaillesParSemaine > 0 ? nbHeuresParSemaine / joursTravaillesParSemaine : 0;
+  const theoreticalHours = contractDailyHours * workDays;
+  const hoursDelta = totalHours - theoreticalHours;
+  const majoredSalary = hoursDelta > 0 ? hoursDelta * hourlyRate * majorationRate : 0;
+
   return {
     totalHours: round(totalHours, 2),
     totalNormalHours: round(totalNormalHours, 2),
@@ -133,6 +144,9 @@ const computeMonthlyStats = (dailyData = {}, rawSettings = {}) => {
     fraisRepasTotal: round(fraisRepasTotal, 2),
     fraisEntretienTotal: round(fraisEntretienTotal, 2),
     totalWithFrais: round(totalWithFrais, 2),
+    heuresTheoriques: round(Math.max(theoreticalHours, 0), 2),
+    ecartHeures: round(hoursDelta, 2),
+    majorationSalaire: round(Math.max(majoredSalary, 0), 2),
     anneeComplete,
     ecartMensualise: {
       joursTravailles: workDays,
@@ -157,6 +171,7 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
   let totalCongeParentDays = 0;
   let totalFraisRepas = 0;
   let totalFraisEntretien = 0;
+  let totalMajorationSalaire = 0;
 
   const monthlyDetails = months.map(({ monthKey, dailyData }) => {
     const stats = computeMonthlyStats(dailyData, settings);
@@ -174,6 +189,7 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
     totalCongeParentDays += stats.congeParentDays;
     totalFraisRepas += stats.fraisRepasTotal;
     totalFraisEntretien += stats.fraisEntretienTotal;
+    totalMajorationSalaire += stats.majorationSalaire || 0;
 
     return {
       month: monthNumber,
@@ -187,6 +203,7 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
       fraisRepas: stats.fraisRepasTotal,
       fraisEntretien: stats.fraisEntretienTotal,
       total: stats.totalWithFrais,
+      majorationSalaire: stats.majorationSalaire,
       stats,
     };
   });
@@ -202,6 +219,7 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
     totalCongeParentDays,
     totalFraisRepas: round(totalFraisRepas, 2),
     totalFraisEntretien: round(totalFraisEntretien, 2),
+    totalMajorationSalaire: round(totalMajorationSalaire, 2),
     grandTotal: round(grandTotal, 2),
     monthlyDetails,
     averageHoursPerMonth: round(totalHours / 12, 2),
