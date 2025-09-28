@@ -116,7 +116,6 @@ const computeMonthlyStats = (dailyData = {}, rawSettings = {}) => {
 
   const fraisRepasTotal = daysWithMeals * (settings.fraisRepas ?? 0);
   const fraisEntretienTotal = daysWithMaintenance * (settings.fraisEntretien ?? 0);
-  const totalWithFrais = totalSalary + fraisRepasTotal + fraisEntretienTotal;
   const meanHoursPerDay = workDays > 0 ? totalHours / workDays : 0;
 
   const joursTravaillesParSemaine = settings.joursTravaillesParSemaine ?? 0;
@@ -129,6 +128,7 @@ const computeMonthlyStats = (dailyData = {}, rawSettings = {}) => {
   const theoreticalHours = contractDailyHours * workDays;
   const hoursDelta = totalHours - theoreticalHours;
   const majoredSalary = hoursDelta > 0 ? hoursDelta * hourlyRate * majorationRate : 0;
+  const totalWithFrais = totalSalary + majoredSalary + fraisRepasTotal + fraisEntretienTotal;
 
   return {
     totalHours: round(totalHours, 2),
@@ -212,7 +212,8 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
     };
   });
 
-  const grandTotal = totalSalary + totalFraisRepas + totalFraisEntretien;
+  const grandTotal =
+    totalSalary + totalMajorationSalaire + totalFraisRepas + totalFraisEntretien;
 
   return {
     year: year ? Number(year) : undefined,
@@ -232,7 +233,13 @@ const computeAnnualStats = (months = [], rawSettings = {}, year) => {
     mensualise: {
       salaireMensuel: anneeComplete.salaireNetMensualise,
       salaireAnnuel: round(anneeComplete.salaireNetMensualise * 12, 2),
-      totalWithFrais: round(anneeComplete.salaireNetMensualise * 12 + totalFraisRepas + totalFraisEntretien, 2),
+      totalWithFrais: round(
+        anneeComplete.salaireNetMensualise * 12 +
+          totalMajorationSalaire +
+          totalFraisRepas +
+          totalFraisEntretien,
+        2
+      ),
       ecartSalaire: round(anneeComplete.salaireNetMensualise * 12 - totalSalary, 2),
     },
   };

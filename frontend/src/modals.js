@@ -259,12 +259,20 @@ export function AnnualView({
 
   // Calcul du total mensualisé avec frais
   const calculateTotalMensualiseWithFrais = () => {
-    if (mensualiseStats?.totalWithFrais !== undefined) {
-      return mensualiseStats.totalWithFrais;
-    }
     const salaireMensualise = calculateAnnualMensualise();
-    const totalFrais = annualStats ? (annualStats.totalFraisRepas + annualStats.totalFraisEntretien) : 0;
-    return salaireMensualise + totalFrais;
+    const totalFrais = annualStats
+      ? Number(annualStats.totalFraisRepas ?? 0) + Number(annualStats.totalFraisEntretien ?? 0)
+      : 0;
+    const totalMajoration = annualStats ? Number(annualStats.totalMajorationSalaire ?? 0) : 0;
+
+    if (mensualiseStats?.totalWithFrais !== undefined) {
+      const backendTotal = Number(mensualiseStats.totalWithFrais);
+      if (Number.isFinite(backendTotal)) {
+        return backendTotal;
+      }
+    }
+
+    return Number(salaireMensualise) + totalMajoration + totalFrais;
   };
 
   // Fonction pour calculer le salaire mensualisé par mois
@@ -342,7 +350,7 @@ export function AnnualView({
                 </div>
                 <div className="bg-orange-50 p-4 rounded-lg">
                   <div className="text-lg font-bold text-orange-900">{calculateTotalMensualiseWithFrais().toFixed(2)}€</div>
-                  <div className="text-orange-700">Total mensualisé + frais</div>
+                  <div className="text-orange-700">Total mensualisé + majoration + frais</div>
                 </div>
               </div>
 
@@ -370,13 +378,17 @@ export function AnnualView({
                     <tbody className="divide-y divide-gray-200">
                       {annualStats.monthlyDetails.map((month) => {
                         const salaireMensualise = getMonthlySalaireMensualise();
-                        const totalMensualise = salaireMensualise + month.fraisRepas + month.fraisEntretien;
                         const positiveHoursDelta = Number.isFinite(month.positiveHoursDelta)
                           ? month.positiveHoursDelta
                           : Math.max(month.stats?.ecartHeures || 0, 0);
                         const majoredSalary = Number.isFinite(month.majorationSalaire)
                           ? month.majorationSalaire
                           : Math.max(month.stats?.majorationSalaire || 0, 0);
+                        const totalMensuel =
+                          Number(salaireMensualise) +
+                          Number(majoredSalary) +
+                          Number(month.fraisRepas ?? 0) +
+                          Number(month.fraisEntretien ?? 0);
 
                         return (
                           <tr key={month.month} className="hover:bg-gray-50">
@@ -389,7 +401,7 @@ export function AnnualView({
                             <td className="px-3 py-3 text-sm text-purple-600 text-right font-medium">{majoredSalary.toFixed(2)}€</td>
                             <td className="px-3 py-3 text-sm text-gray-600 text-right">{month.fraisRepas.toFixed(2)}€</td>
                             <td className="px-3 py-3 text-sm text-gray-600 text-right">{month.fraisEntretien.toFixed(2)}€</td>
-                            <td className="px-3 py-3 text-sm text-orange-600 text-right font-bold">{totalMensualise.toFixed(2)}€</td>
+                            <td className="px-3 py-3 text-sm text-orange-600 text-right font-bold">{totalMensuel.toFixed(2)}€</td>
                           </tr>
                         );
                       })}
