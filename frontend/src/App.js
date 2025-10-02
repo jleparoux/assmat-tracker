@@ -774,13 +774,16 @@ const App = () => {
                       <span className="font-medium">{totalHours.toFixed(1)}h</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Écart:</span>
+                      <span className="text-gray-600">Heures majorées:</span>
                       <span
                         className={`font-semibold px-2 py-0.5 rounded-full ${getEcartBadgeClasses(hoursDelta)}`}
                       >
                         {formatSignedValue(hoursDelta, 1, '\u00a0h')}
                       </span>
                     </div>
+
+                    <hr className="my-3" />
+
                     <div className="flex justify-between">
                       <span className="text-gray-600">Moyenne réelle / jour:</span>
                       <span className="font-medium">{meanHoursPerDay.toFixed(1)}h</span>
@@ -793,25 +796,25 @@ const App = () => {
                     <hr className="my-3" />
 
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Salaire mensualisé:</span>
+                      <span className="text-gray-600">(1) Salaire mensualisé:</span>
                       <span className="font-medium">
                         {(Number(monthlyStats?.anneeComplete?.salaireNetMensualise) || 0).toFixed(2)}€
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Salaire majoré:</span>
+                      <span className="text-gray-600">(2) Salaire majoré:</span>
                       <span className="font-medium">{majoredSalary.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Frais repas:</span>
+                      <span className="text-gray-600">(3) Frais repas:</span>
                       <span className="font-medium">{monthlyStats.fraisRepasTotal.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Frais entretien:</span>
+                      <span className="text-gray-600">(4) Frais entretien:</span>
                       <span className="font-medium">{monthlyStats.fraisEntretienTotal.toFixed(2)}€</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-semibold text-gray-900">Total (mensualisé + majoration + frais):</span>
+                      <span className="font-semibold text-gray-900">Total (1 + 2 + 3 + 4):</span>
                       <span className="font-bold text-green-600">
                         {calculateTotalAnneeComplete(monthlyStats).toFixed(2)}€
                       </span>
